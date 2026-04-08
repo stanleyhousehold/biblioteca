@@ -38,6 +38,29 @@ function IconMenu() {
   );
 }
 
+function UserAvatar({ user, size = 32 }) {
+  if (user?.photo_url) {
+    return (
+      <img
+        src={user.photo_url}
+        alt={user.name}
+        style={{
+          width: size, height: size,
+          borderRadius: '50%',
+          objectFit: 'cover',
+          flexShrink: 0,
+          border: '2px solid var(--teal-100)',
+        }}
+      />
+    );
+  }
+  return (
+    <div className="user-avatar" style={{ width: size, height: size, fontSize: size * 0.44 }}>
+      {user?.name?.[0]?.toUpperCase()}
+    </div>
+  );
+}
+
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -53,6 +76,26 @@ export default function Layout({ children }) {
     { to: '/inventario', label: 'Inventario', icon: <IconBox /> },
     { to: '/libros', label: 'Libros', icon: <IconBook /> },
   ];
+
+  const UserFooter = ({ onClose }) => (
+    <div className="sidebar-footer">
+      <NavLink
+        to="/perfil"
+        className={({ isActive }) => `user-info user-info-link${isActive ? ' active' : ''}`}
+        onClick={onClose}
+        title="Ver perfil"
+      >
+        <UserAvatar user={user} size={32} />
+        <div style={{ overflow: 'hidden' }}>
+          <div className="user-name">{user?.name}</div>
+          <div className="user-username">@{user?.username}</div>
+        </div>
+      </NavLink>
+      <button className="btn btn-ghost btn-sm btn-icon" onClick={handleLogout} title="Cerrar sesión">
+        <IconLogout />
+      </button>
+    </div>
+  );
 
   return (
     <div className="layout">
@@ -75,18 +118,7 @@ export default function Layout({ children }) {
             </NavLink>
           ))}
         </nav>
-        <div className="sidebar-footer">
-          <div className="user-info">
-            <div className="user-avatar">{user?.name?.[0]?.toUpperCase()}</div>
-            <div>
-              <div className="user-name">{user?.name}</div>
-              <div className="user-username">@{user?.username}</div>
-            </div>
-          </div>
-          <button className="btn btn-ghost btn-sm btn-icon" onClick={handleLogout} title="Cerrar sesión">
-            <IconLogout />
-          </button>
-        </div>
+        <UserFooter />
       </aside>
 
       {/* Mobile top bar */}
@@ -122,15 +154,7 @@ export default function Layout({ children }) {
                 </NavLink>
               ))}
             </nav>
-            <div className="sidebar-footer">
-              <div className="user-info">
-                <div className="user-avatar">{user?.name?.[0]?.toUpperCase()}</div>
-                <div>
-                  <div className="user-name">{user?.name}</div>
-                  <div className="user-username">@{user?.username}</div>
-                </div>
-              </div>
-            </div>
+            <UserFooter onClose={() => setMenuOpen(false)} />
           </div>
         </div>
       )}
@@ -189,24 +213,38 @@ export default function Layout({ children }) {
         .nav-item.active { background: var(--teal-50); color: var(--teal-700); }
         .nav-item.active svg { color: var(--teal-600); }
         .sidebar-footer {
-          padding: 14px;
+          padding: 10px 14px;
           border-top: 1px solid var(--gray-100);
           display: flex;
           align-items: center;
           justify-content: space-between;
           gap: 8px;
         }
-        .user-info { display: flex; align-items: center; gap: 10px; overflow: hidden; }
+        .user-info { display: flex; align-items: center; gap: 10px; overflow: hidden; min-width: 0; }
+        .user-info-link {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          overflow: hidden;
+          min-width: 0;
+          flex: 1;
+          padding: 6px 8px;
+          border-radius: var(--radius-sm);
+          text-decoration: none;
+          color: inherit;
+          transition: background var(--transition);
+        }
+        .user-info-link:hover { background: var(--gray-50); }
+        .user-info-link.active { background: var(--teal-50); }
         .user-avatar {
-          width: 32px; height: 32px;
           background: var(--teal-100);
           color: var(--teal-700);
           border-radius: 50%;
           display: flex; align-items: center; justify-content: center;
-          font-size: 14px; font-weight: 800;
+          font-weight: 800;
           flex-shrink: 0;
         }
-        .user-name { font-size: 13px; font-weight: 700; color: var(--gray-800); }
+        .user-name { font-size: 13px; font-weight: 700; color: var(--gray-800); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .user-username { font-size: 11px; color: var(--gray-400); }
 
         /* ── Main ── */

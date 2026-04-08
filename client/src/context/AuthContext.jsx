@@ -27,8 +27,13 @@ export function AuthProvider({ children }) {
     setUser(null);
   }
 
+  // Permite actualizar el estado del usuario desde cualquier página (ej: tras subir foto)
+  function updateUser(partial) {
+    setUser(prev => ({ ...prev, ...partial }));
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

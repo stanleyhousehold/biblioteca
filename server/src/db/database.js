@@ -88,4 +88,20 @@ try {
   process.exit(1);
 }
 
+// ── Migrations ────────────────────────────────────────
+// Añadir columnas nuevas sin romper instalaciones existentes
+const migrations = [
+  'ALTER TABLE users ADD COLUMN photo_url TEXT',
+];
+for (const sql of migrations) {
+  try {
+    db.exec(sql);
+  } catch (err) {
+    // "duplicate column name" → ya existe, ignorar
+    if (!err.message.includes('duplicate column name')) {
+      console.error('[DB] Migration error:', sql, err.message);
+    }
+  }
+}
+
 module.exports = db;

@@ -1,8 +1,29 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const db = require('../db/database');
 const authMiddleware = require('../middleware/auth');
+
+// Multer para fotos de perfil
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
+const profileStorage = multer.diskStorage({
+  destination: UPLOADS_DIR,
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `profile-${req.user.id}-${Date.now()}${ext}`);
+  },
+});
+const uploadProfile = multer({
+  storage: profileStorage,
+  limits: { fileSize: 3 * 1024 * 1024 }, // 3 MB
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Solo se permiten imágenes'));
+  },
+});
 
 const router = express.Router();
 
@@ -79,13 +100,43 @@ router.post('/login', async (req, res) => {
 // GET /api/auth/me
 router.get('/me', authMiddleware, (req, res) => {
   try {
-    const user = db.prepare('SELECT id, name, username, created_at FROM users WHERE id = ?').get(req.user.id);
+    const user = db.prepare('SELECT id, name, username, photo_url, created_at FROM users WHERE id = ?').get(req.user.id);
     if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
     res.json(user);
   } catch (err) {
     console.error('[me error]', err);
     res.status(500).json({ error: `Error al obtener usuario: ${err.message}` });
   }
+});
+
+// PUT /api/auth/profile/photo
+router.put('/profile/photo', authMiddleware, (req, res) => {
+  uploadProfile.single('photo')(req, res, (uploadErr) => {
+    if (uploadErr) {
+      return res.status(400).json({ error: uploadErr.message });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'No se recibió ninguna imagen' });
+    }
+
+    try {
+      // Eliminar foto anterior si existe
+      const current = db.prepare('SELECT photo_url FROM users WHERE id = ?').get(req.user.id);
+      if (current?.photo_url && current.photo_url.startsWith('/uploads/')) {
+        const oldPath = path.join(UPLOADS_DIR, path.basename(current.photo_url));
+        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      }
+
+      const photo_url = `/uploads/${req.file.filename}`;
+      db.prepare('UPDATE users SET photo_url = ? WHERE id = ?').run(photo_url, req.user.id);
+
+      const user = db.prepare('SELECT id, name, username, photo_url, created_at FROM users WHERE id = ?').get(req.user.id);
+      res.json(user);
+    } catch (err) {
+      console.error('[profile photo error]', err);
+      res.status(500).json({ error: `Error al guardar la foto: ${err.message}` });
+    }
+  });
 });
 
 module.exports = router;

@@ -7,6 +7,7 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
 import Books from './pages/Books';
+import Profile from './pages/Profile';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -38,6 +39,7 @@ export default function App() {
           <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
           <Route path="/inventario" element={<PrivateRoute><Inventory /></PrivateRoute>} />
           <Route path="/libros" element={<PrivateRoute><Books /></PrivateRoute>} />
+          <Route path="/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

@@ -31,6 +31,7 @@ export const api = {
     register: (body) => request('POST', '/auth/register', body),
     login: (body) => request('POST', '/auth/login', body),
     me: () => request('GET', '/auth/me'),
+    uploadProfilePhoto: (formData) => request('PUT', '/auth/profile/photo', formData, true),
   },
   inventory: {
     getRooms: () => request('GET', '/inventory/rooms'),

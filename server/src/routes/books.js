@@ -7,41 +7,82 @@ const router = express.Router();
 
 router.use(authMiddleware);
 
-// ── OPEN LIBRARY LOOKUP ────────────────────────────────
+// ── ISBN LOOKUP (OpenLibrary → Google Books) ───────────
 
 // GET /api/books/isbn/:isbn
 router.get('/isbn/:isbn', async (req, res) => {
   const { isbn } = req.params;
   const cleanIsbn = isbn.replace(/[^0-9X]/gi, '');
 
+  // 1. Intentar Open Library
   try {
     const url = `https://openlibrary.org/api/books?bibkeys=ISBN:${cleanIsbn}&format=json&jscmd=data`;
     const response = await fetch(url, { timeout: 8000 });
     const data = await response.json();
     const key = `ISBN:${cleanIsbn}`;
 
-    if (!data[key]) {
-      return res.status(404).json({ error: 'Libro no encontrado en Open Library' });
+    if (data[key]) {
+      const book = data[key];
+      const authors = book.authors ? book.authors.map(a => a.name).join(', ') : '';
+      const year = book.publish_date ? book.publish_date.match(/\d{4}/)?.[0] || '' : '';
+      const cover_url = book.cover
+        ? (book.cover.large || book.cover.medium || book.cover.small)
+        : '';
+
+      return res.json({
+        isbn: cleanIsbn,
+        title: book.title || '',
+        author: authors,
+        year,
+        cover_url,
+        source: 'openlibrary',
+      });
     }
-
-    const book = data[key];
-    const authors = book.authors ? book.authors.map(a => a.name).join(', ') : '';
-    const year = book.publish_date
-      ? book.publish_date.match(/\d{4}/)?.[0] || ''
-      : '';
-    const cover_url = book.cover ? (book.cover.large || book.cover.medium || book.cover.small) : '';
-
-    res.json({
-      isbn: cleanIsbn,
-      title: book.title || '',
-      author: authors,
-      year,
-      cover_url,
-    });
+    console.log(`[ISBN] ${cleanIsbn} no encontrado en Open Library, probando Google Books...`);
   } catch (err) {
-    console.error('OpenLibrary error:', err.message);
-    res.status(502).json({ error: 'No se pudo conectar con Open Library' });
+    console.error('[ISBN] Open Library error:', err.message);
   }
+
+  // 2. Fallback: Google Books
+  try {
+    const url = `https://www.googleapis.com/books/v1/volumes?q=isbn:${cleanIsbn}&maxResults=1`;
+    const response = await fetch(url, { timeout: 8000 });
+    const data = await response.json();
+
+    if (data.items && data.items.length > 0) {
+      const info = data.items[0].volumeInfo;
+      const authors = info.authors ? info.authors.join(', ') : '';
+      const year = info.publishedDate ? info.publishedDate.match(/\d{4}/)?.[0] || '' : '';
+      let cover_url = '';
+      if (info.imageLinks) {
+        const img = info.imageLinks.extraLarge
+          || info.imageLinks.large
+          || info.imageLinks.medium
+          || info.imageLinks.small
+          || info.imageLinks.thumbnail
+          || '';
+        // Google Books devuelve URLs http://, las convertimos a https://
+        cover_url = img.replace(/^http:\/\//, 'https://');
+      }
+
+      return res.json({
+        isbn: cleanIsbn,
+        title: info.title || '',
+        author: authors,
+        year,
+        cover_url,
+        source: 'google',
+      });
+    }
+    console.log(`[ISBN] ${cleanIsbn} no encontrado en Google Books`);
+  } catch (err) {
+    console.error('[ISBN] Google Books error:', err.message);
+  }
+
+  // 3. No encontrado en ninguna API
+  return res.status(404).json({
+    error: 'ISBN no encontrado en Open Library ni en Google Books. Rellena los datos manualmente.',
+  });
 });
 
 // ── LIBRARIES ──────────────────────────────────────────
