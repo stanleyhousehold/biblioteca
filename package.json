@@ -10,7 +10,7 @@
     "start": "npm run start --prefix server",
     "install:all": "npm install && npm install --prefix server && npm install --prefix client"
   },
-  "devDependencies": {
+  "dependencies": {
     "concurrently": "^8.2.2"
   }
 }
