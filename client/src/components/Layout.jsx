@@ -181,6 +181,7 @@ export default function Layout({ children }) {
 
         @media(max-width:700px) {
           .sidebar { display:none; }
+          .mobile-drawer { display:flex; flex-direction:column; }
           .topbar { display:flex; }
           .main-content { margin-left:0; padding-top:52px; }
           .content-inner { padding:14px; }
