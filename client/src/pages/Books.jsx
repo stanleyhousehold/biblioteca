@@ -241,10 +241,11 @@ function BookModal({ book, libraries, householdId, onClose, onSave }) {
 }
 
 export default function Books() {
-  const { householdParams, currentHouseholdId } = useHousehold();
+  const { currentHouseholdId } = useHousehold();
   const [libraries, setLibraries] = useState([]);
   const [books, setBooks] = useState([]);
   const [filterLibrary, setFilterLibrary] = useState('');
+  const [filterLanguage, setFilterLanguage] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [search, setSearch] = useState('');
   const [showLibModal, setShowLibModal] = useState(false);
@@ -258,17 +259,24 @@ export default function Books() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    const hParams = currentHouseholdId ? { household_id: currentHouseholdId } : {};
     try {
       const [libsData, booksData] = await Promise.all([
-        api.books.getLibraries(householdParams),
-        api.books.getBooks({ ...householdParams, search, library_id: filterLibrary }),
+        api.books.getLibraries(hParams),
+        api.books.getBooks({ ...hParams, search, library_id: filterLibrary }),
       ]);
       setLibraries(libsData);
       setBooks(booksData);
     } finally { setLoading(false); }
-  }, [householdParams, search, filterLibrary]);
+  }, [currentHouseholdId, search, filterLibrary]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Reset language filter when context changes so stale options don't linger
+  useEffect(() => { setFilterLanguage(''); }, [currentHouseholdId, filterLibrary]);
+
+  const availableLanguages = [...new Set(books.map(b => b.language).filter(Boolean))].sort();
+  const displayedBooks = filterLanguage ? books.filter(b => b.language === filterLanguage) : books;
 
   async function handleDeleteLib(id) { await api.books.deleteLibrary(id); setFilterLibrary(''); loadData(); }
   async function handleDeleteBook(id) { await api.books.deleteBook(id); loadData(); }
@@ -296,6 +304,12 @@ export default function Books() {
           <option value="">Todas las colecciones</option>
           {libraries.map(l => <option key={l.id} value={l.id}>{l.name} ({l.book_count})</option>)}
         </select>
+        {availableLanguages.length > 1 && (
+          <select className="lib-filter" value={filterLanguage} onChange={e => setFilterLanguage(e.target.value)}>
+            <option value="">Todos los idiomas</option>
+            {availableLanguages.map(lang => <option key={lang} value={lang}>{lang}</option>)}
+          </select>
+        )}
       </div>
 
       <div className="books-layout">
@@ -330,17 +344,17 @@ export default function Books() {
         <section className="books-section">
           {loading
             ? <div style={{ textAlign: 'center', padding: 40 }}><span className="spinner" /></div>
-            : books.length === 0
+            : displayedBooks.length === 0
               ? (
                 <div className="empty-state">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
                   <p>No hay libros</p>
-                  <span>{debouncedSearch ? 'Prueba otra búsqueda' : 'Añade tu primer libro o escanea un ISBN'}</span>
+                  <span>{debouncedSearch ? 'Prueba otra búsqueda' : filterLanguage ? `Sin libros en "${filterLanguage}"` : 'Añade tu primer libro o escanea un ISBN'}</span>
                 </div>
               )
               : (
                 <div className="books-grid">
-                  {books.map(book => (
+                  {displayedBooks.map(book => (
                     <div key={book.id} className="book-card card">
                       <div className="book-cover-wrap">
                         {getCover(book)

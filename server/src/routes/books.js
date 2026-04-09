@@ -44,7 +44,16 @@ router.get('/isbn/:isbn', async (req, res) => {
       const year = book.publish_date ? book.publish_date.match(/\d{4}/)?.[0] || '' : '';
       const cover_url = book.cover ? (book.cover.large || book.cover.medium || book.cover.small) : '';
       const language = book.languages?.[0]?.key?.split('/')?.[2] || '';
-      const langMap = { eng: 'Inglés', spa: 'Español', fre: 'Francés', ger: 'Alemán', por: 'Portugués', ita: 'Italiano' };
+      const langMap = {
+        eng: 'Inglés', spa: 'Español', fre: 'Francés', ger: 'Alemán',
+        por: 'Portugués', ita: 'Italiano', cat: 'Català', jpn: 'Japonés',
+        zho: 'Chino', chi: 'Chino', ara: 'Árabe', rus: 'Ruso',
+        dut: 'Holandés', nld: 'Holandés', pol: 'Polaco', swe: 'Sueco',
+        dan: 'Danés', nor: 'Noruego', fin: 'Finlandés', kor: 'Coreano',
+        hin: 'Hindi', lat: 'Latín', ell: 'Griego', heb: 'Hebreo',
+        tur: 'Turco', ukr: 'Ucraniano', ces: 'Checo', ron: 'Rumano',
+        hun: 'Húngaro', ind: 'Indonesio',
+      };
       return res.json({
         isbn: cleanIsbn, title: book.title || '', author: authors, year, cover_url,
         language: langMap[language] || language,
@@ -72,7 +81,16 @@ router.get('/isbn/:isbn', async (req, res) => {
           || info.imageLinks.small || info.imageLinks.thumbnail || '';
         cover_url = img.replace(/^http:\/\//, 'https://');
       }
-      const gbLangMap = { en: 'Inglés', es: 'Español', fr: 'Francés', de: 'Alemán', pt: 'Portugués', it: 'Italiano', ca: 'Catalán' };
+      const gbLangMap = {
+        en: 'Inglés', es: 'Español', fr: 'Francés', de: 'Alemán',
+        pt: 'Portugués', it: 'Italiano', ca: 'Català', ja: 'Japonés',
+        zh: 'Chino', ar: 'Árabe', ru: 'Ruso', nl: 'Holandés',
+        pl: 'Polaco', sv: 'Sueco', da: 'Danés', no: 'Noruego',
+        fi: 'Finlandés', ko: 'Coreano', hi: 'Hindi', la: 'Latín',
+        el: 'Griego', he: 'Hebreo', tr: 'Turco', uk: 'Ucraniano',
+        cs: 'Checo', ro: 'Rumano', hu: 'Húngaro', id: 'Indonesio',
+        vi: 'Vietnamita', th: 'Tailandés',
+      };
       const language = gbLangMap[info.language] || info.language || '';
       return res.json({
         isbn: cleanIsbn, title: info.title || '', author: authors, year, cover_url, language,
