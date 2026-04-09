@@ -11,6 +11,14 @@ export function HouseholdProvider({ children }) {
     const saved = localStorage.getItem('currentHouseholdId');
     return saved ? Number(saved) : null;
   });
+  const [personalEmoji, setPersonalEmojiState] = useState(
+    () => localStorage.getItem('personal_emoji') || '🏠'
+  );
+
+  function setPersonalEmoji(emoji) {
+    localStorage.setItem('personal_emoji', emoji);
+    setPersonalEmojiState(emoji);
+  }
 
   const loadHouseholds = useCallback(async () => {
     if (!user) return;
@@ -50,6 +58,8 @@ export function HouseholdProvider({ children }) {
       switchHousehold,
       householdParams,
       reloadHouseholds: loadHouseholds,
+      personalEmoji,
+      setPersonalEmoji,
     }}>
       {children}
     </HouseholdContext.Provider>

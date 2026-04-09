@@ -4,10 +4,14 @@ import { api } from '../api/api';
 import { useHousehold } from '../context/HouseholdContext';
 import { useAuth } from '../context/AuthContext';
 
-const EMOJIS = [
-  '🏠','🏡','🏢','🏣','🏤','🏥','🏦','🏨','🏩','🏪',
-  '🏫','🏬','🏭','🏰','🏯','🏛️','⛪','🕌','🛖','🏕️',
-  '🌳','🏔️','🌊','🌸','❄️','☀️','⭐','🌙','🔑','🌻',
+const EMOJI_CATEGORIES = [
+  { label: 'Hogares',     emojis: ['🏠','🏡','🏢','🏣','🏤','🏥','🏦','🏨','🏩','🏪','🏫','🏬','🏭','🏰','🏯','🏛️','⛪','🕌','🛖'] },
+  { label: 'Naturaleza',  emojis: ['🌲','🌳','🌴','🌊','🏖️','🏕️','⛰️','🏔️','🌻','🌸','🌈','❄️','☀️','🌙'] },
+  { label: 'Hogar',       emojis: ['🛋️','🪴','🕯️','🛏️','🚪','🪟'] },
+  { label: 'Animales',    emojis: ['🐶','🐱','🐰','🦊','🐻','🐼','🐨'] },
+  { label: 'Comida',      emojis: ['🍕','🍔','🌮','🍜','🍣','🎂'] },
+  { label: 'Actividades', emojis: ['⚽','🎮','🎨','🎵','🎬','📚','🎭'] },
+  { label: 'Otros',       emojis: ['❤️','⭐','🌟','💫','🔑','🏆','🎉'] },
 ];
 
 function IconX() {
@@ -32,24 +36,33 @@ function EmojiPicker({ value, onChange }) {
       </div>
       {open && (
         <div style={{
-          display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 10,
-          padding: 10, background: 'var(--gray-50)', borderRadius: 8,
-          border: '1px solid var(--gray-200)',
+          marginTop: 10, padding: 12,
+          background: 'var(--gray-50)', borderRadius: 8, border: '1px solid var(--gray-200)',
+          maxHeight: 260, overflowY: 'auto',
         }}>
-          {EMOJIS.map(e => (
-            <button
-              key={e}
-              type="button"
-              style={{
-                fontSize: 22, padding: 5, border: '2px solid',
-                borderColor: e === value ? 'var(--teal-500)' : 'transparent',
-                borderRadius: 6, background: e === value ? 'var(--teal-50)' : 'none',
-                cursor: 'pointer', lineHeight: 1,
-              }}
-              onClick={() => { onChange(e); setOpen(false); }}
-            >
-              {e}
-            </button>
+          {EMOJI_CATEGORIES.map(cat => (
+            <div key={cat.label} style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 5 }}>
+                {cat.label}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                {cat.emojis.map(e => (
+                  <button
+                    key={e}
+                    type="button"
+                    style={{
+                      fontSize: 22, padding: '4px 5px', border: '2px solid',
+                      borderColor: e === value ? 'var(--teal-500)' : 'transparent',
+                      borderRadius: 6, background: e === value ? 'var(--teal-50)' : 'none',
+                      cursor: 'pointer', lineHeight: 1,
+                    }}
+                    onClick={() => { onChange(e); setOpen(false); }}
+                  >
+                    {e}
+                  </button>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       )}
@@ -101,6 +114,37 @@ function CreateModal({ onClose, onCreated }) {
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+function PersonalDetail() {
+  const { currentHouseholdId, switchHousehold, personalEmoji, setPersonalEmoji } = useHousehold();
+  const isActive = !currentHouseholdId;
+
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <span style={{ fontSize: 28 }}>{personalEmoji}</span>
+        <div>
+          <h2 style={{ fontSize: 18, fontWeight: 800 }}>Personal</h2>
+          <p style={{ fontSize: 12, color: 'var(--gray-400)', margin: 0 }}>Tu espacio personal sin hogar compartido</p>
+        </div>
+      </div>
+
+      <div className="field">
+        <label style={{ fontSize: 13, fontWeight: 700 }}>Icono</label>
+        <EmojiPicker value={personalEmoji} onChange={setPersonalEmoji} />
+      </div>
+
+      {!isActive && (
+        <button className="btn btn-primary btn-sm" style={{ marginTop: 8 }} onClick={() => switchHousehold(null)}>
+          Cambiar a Personal
+        </button>
+      )}
+      {isActive && (
+        <p style={{ fontSize: 12, color: 'var(--teal-700)', fontWeight: 600, marginTop: 8 }}>✓ Hogar activo actualmente</p>
+      )}
     </div>
   );
 }
@@ -178,7 +222,6 @@ function HouseholdDetail({ householdId }) {
         </div>
       </div>
 
-      {/* Edit form for owners */}
       {editOpen && amOwner && (
         <form onSubmit={handleSaveEdit} style={{ marginBottom: 20, padding: 14, background: 'var(--gray-50)', borderRadius: 8, border: '1px solid var(--gray-200)' }}>
           <div className="field">
@@ -198,7 +241,6 @@ function HouseholdDetail({ householdId }) {
         </form>
       )}
 
-      {/* Members */}
       <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--gray-500)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.05em' }}>Miembros</h3>
       <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
         {detail.members?.map(m => (
@@ -218,16 +260,13 @@ function HouseholdDetail({ householdId }) {
         ))}
       </ul>
 
-      {/* Invite */}
       <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--gray-500)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.05em' }}>Invitar miembros</h3>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         <button className="btn btn-secondary btn-sm" onClick={generateInvite}>Generar enlace de invitación</button>
         {inviteUrl && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--gray-50)', border: '1px solid var(--gray-200)', borderRadius: 6, padding: '6px 10px', flex: 1, minWidth: 0 }}>
             <span style={{ fontSize: 12, color: 'var(--gray-600)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{inviteUrl}</span>
-            <button className="btn btn-ghost btn-icon" style={{ padding: 4 }} onClick={copyInvite} title="Copiar">
-              <IconCopy />
-            </button>
+            <button className="btn btn-ghost btn-icon" style={{ padding: 4 }} onClick={copyInvite} title="Copiar"><IconCopy /></button>
             {copied && <span style={{ fontSize: 12, color: 'var(--green-600)', whiteSpace: 'nowrap' }}>¡Copiado!</span>}
           </div>
         )}
@@ -287,9 +326,10 @@ export function JoinHousehold() {
 
 // ── Main Households Page ──────────────────────────────
 export default function Households() {
-  const { households, currentHouseholdId, switchHousehold, reloadHouseholds } = useHousehold();
+  const { households, currentHouseholdId, switchHousehold, reloadHouseholds, personalEmoji } = useHousehold();
   const [showCreate, setShowCreate] = useState(false);
-  const [selectedId, setSelectedId] = useState(currentHouseholdId || households[0]?.id || null);
+  // Default to 'personal' so the Personal panel is shown on first visit
+  const [selectedId, setSelectedId] = useState(currentHouseholdId || 'personal');
 
   async function handleDelete(id) {
     if (!confirm('¿Eliminar este hogar? Se perderán las habitaciones y colecciones asociadas.')) return;
@@ -297,7 +337,7 @@ export default function Households() {
       await api.households.delete(id);
       if (currentHouseholdId === id) switchHousehold(null);
       reloadHouseholds();
-      setSelectedId(null);
+      setSelectedId('personal');
     } catch (err) {
       alert(err.message);
     }
@@ -311,34 +351,49 @@ export default function Households() {
       </div>
 
       <div className="households-layout">
+        {/* List */}
         <aside className="card" style={{ padding: 16 }}>
           <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--gray-500)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.05em' }}>Mis hogares</h3>
-          {households.length === 0 ? (
-            <p style={{ fontSize: 13, color: 'var(--gray-400)' }}>Sin hogares. Crea uno o únete con un enlace.</p>
-          ) : (
-            <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {households.map(h => (
-                <li
-                  key={h.id}
-                  className={`household-chip${selectedId === h.id ? ' active' : ''}`}
-                  onClick={() => setSelectedId(h.id)}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
-                    <span style={{ fontSize: 18, flexShrink: 0 }}>{h.emoji || '🏠'}</span>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.name}</div>
-                      <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>{h.role === 'owner' ? 'Propietario' : 'Miembro'}</div>
-                    </div>
+          <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {/* Personal (always first) */}
+            <li
+              className={`household-chip${selectedId === 'personal' ? ' active' : ''}`}
+              onClick={() => setSelectedId('personal')}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                <span style={{ fontSize: 18, flexShrink: 0 }}>{personalEmoji}</span>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>Personal</div>
+                  <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>Espacio propio</div>
+                </div>
+              </div>
+              {!currentHouseholdId && <span className="badge" style={{ fontSize: 10, flexShrink: 0 }}>Activo</span>}
+            </li>
+
+            {households.map(h => (
+              <li
+                key={h.id}
+                className={`household-chip${selectedId === h.id ? ' active' : ''}`}
+                onClick={() => setSelectedId(h.id)}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: 18, flexShrink: 0 }}>{h.emoji || '🏠'}</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.name}</div>
+                    <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>{h.role === 'owner' ? 'Propietario' : 'Miembro'}</div>
                   </div>
-                  {currentHouseholdId === h.id && <span className="badge" style={{ fontSize: 10, flexShrink: 0 }}>Activo</span>}
-                </li>
-              ))}
-            </ul>
-          )}
+                </div>
+                {currentHouseholdId === h.id && <span className="badge" style={{ fontSize: 10, flexShrink: 0 }}>Activo</span>}
+              </li>
+            ))}
+          </ul>
         </aside>
 
+        {/* Detail */}
         <div>
-          {selectedId && (
+          {selectedId === 'personal' && <PersonalDetail />}
+
+          {selectedId !== 'personal' && selectedId && (
             <>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
                 {currentHouseholdId === selectedId ? (
@@ -354,9 +409,6 @@ export default function Households() {
               </div>
               <HouseholdDetail householdId={selectedId} />
             </>
-          )}
-          {!selectedId && households.length > 0 && (
-            <div className="card empty-state"><p>Selecciona un hogar para ver sus detalles</p></div>
           )}
         </div>
       </div>

@@ -23,7 +23,7 @@ function UserAvatar({ user, size = 30 }) {
 }
 
 function HouseholdSwitcher() {
-  const { households, currentHousehold, currentHouseholdId, switchHousehold } = useHousehold();
+  const { households, currentHouseholdId, switchHousehold, personalEmoji } = useHousehold();
 
   if (households.length === 0) return null;
 
@@ -34,7 +34,7 @@ function HouseholdSwitcher() {
         onChange={e => switchHousehold(e.target.value ? Number(e.target.value) : null)}
         title="Cambiar hogar activo"
       >
-        <option value="">🏠 Personal</option>
+        <option value="">{personalEmoji} Personal</option>
         {households.map(h => (
           <option key={h.id} value={h.id}>{h.emoji || '🏠'} {h.name}</option>
         ))}
