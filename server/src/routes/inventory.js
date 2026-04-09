@@ -1,24 +1,13 @@
 const express = require('express');
-const path = require('path');
-const fs = require('fs');
 const multer = require('multer');
 const { pool } = require('../db/database');
 const authMiddleware = require('../middleware/auth');
+const { uploadBuffer, deleteByUrl } = require('../lib/cloudinary');
 
 const router = express.Router();
 
-const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: UPLOADS_DIR,
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `item-${Date.now()}${ext}`);
-  },
-});
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) cb(null, true);
@@ -196,7 +185,11 @@ router.post('/items', upload.single('photo'), async (req, res) => {
       return res.status(400).json({ error: 'El nombre del objeto es obligatorio' });
     }
 
-    const photo_url = req.file ? `/uploads/${req.file.filename}` : null;
+    let photo_url = null;
+    if (req.file) {
+      const result = await uploadBuffer(req.file.buffer, { folder: 'biblioteca/items' });
+      photo_url = result.secure_url;
+    }
     const { rows: inserted } = await pool.query(`
       INSERT INTO items (name, description, room_id, household_id, photo_url, created_by)
       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id
@@ -231,11 +224,9 @@ router.put('/items/:id', upload.single('photo'), async (req, res) => {
 
     let photo_url = item.photo_url;
     if (req.file) {
-      if (item.photo_url?.startsWith('/uploads/')) {
-        const oldPath = path.join(UPLOADS_DIR, path.basename(item.photo_url));
-        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-      }
-      photo_url = `/uploads/${req.file.filename}`;
+      await deleteByUrl(photo_url);
+      const result = await uploadBuffer(req.file.buffer, { folder: 'biblioteca/items' });
+      photo_url = result.secure_url;
     }
 
     await pool.query(`
@@ -266,11 +257,7 @@ router.delete('/items/:id', async (req, res) => {
     const item = rows[0];
     if (!item) return res.status(404).json({ error: 'Objeto no encontrado' });
 
-    if (item.photo_url?.startsWith('/uploads/')) {
-      const filePath = path.join(UPLOADS_DIR, path.basename(item.photo_url));
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    }
-
+    await deleteByUrl(item.photo_url);
     await pool.query('DELETE FROM items WHERE id = $1', [req.params.id]);
     res.json({ message: 'Objeto eliminado' });
   } catch (err) {

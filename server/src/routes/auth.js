@@ -2,11 +2,10 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const path = require('path');
-const fs = require('fs');
 const multer = require('multer');
 const { pool } = require('../db/database');
 const authMiddleware = require('../middleware/auth');
+const { uploadBuffer, deleteByUrl } = require('../lib/cloudinary');
 
 const router = express.Router();
 
@@ -24,17 +23,9 @@ if (process.env.RESEND_API_KEY) {
 const FROM_EMAIL = process.env.FROM_EMAIL || 'onboarding@resend.dev';
 const APP_URL = process.env.APP_URL || 'http://localhost:5173';
 
-// ── Multer para fotos de perfil ───────────────────────
-const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
-const profileStorage = multer.diskStorage({
-  destination: UPLOADS_DIR,
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `profile-${req.user.id}-${Date.now()}${ext}`);
-  },
-});
+// ── Multer para fotos de perfil (memoria → Cloudinary) ─
 const uploadProfile = multer({
-  storage: profileStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 3 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) cb(null, true);
@@ -175,13 +166,16 @@ router.put('/profile/photo', authMiddleware, (req, res) => {
       const { rows: current } = await pool.query(
         'SELECT photo_url FROM users WHERE id = $1', [req.user.id]
       );
-      if (current[0]?.photo_url?.startsWith('/uploads/')) {
-        const oldPath = path.join(UPLOADS_DIR, path.basename(current[0].photo_url));
-        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-      }
+      await deleteByUrl(current[0]?.photo_url);
 
-      const photo_url = `/uploads/${req.file.filename}`;
-      await pool.query('UPDATE users SET photo_url = $1 WHERE id = $2', [photo_url, req.user.id]);
+      const result = await uploadBuffer(req.file.buffer, {
+        folder: 'biblioteca/profiles',
+        public_id: `profile-${req.user.id}`,
+        overwrite: true,
+        transformation: [{ width: 300, height: 300, crop: 'fill', gravity: 'face' }],
+      });
+
+      await pool.query('UPDATE users SET photo_url = $1 WHERE id = $2', [result.secure_url, req.user.id]);
 
       const { rows } = await pool.query(
         'SELECT id, name, username, email, photo_url, created_at FROM users WHERE id = $1',

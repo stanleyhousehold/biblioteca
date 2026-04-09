@@ -1,26 +1,15 @@
 const express = require('express');
-const path = require('path');
-const fs = require('fs');
 const fetch = require('node-fetch');
 const multer = require('multer');
 const { pool } = require('../db/database');
 const authMiddleware = require('../middleware/auth');
+const { uploadBuffer, deleteByUrl } = require('../lib/cloudinary');
 
 const router = express.Router();
 router.use(authMiddleware);
 
-const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-
-const coverStorage = multer.diskStorage({
-  destination: UPLOADS_DIR,
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `book-cover-${Date.now()}${ext}`);
-  },
-});
 const uploadCover = multer({
-  storage: coverStorage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) cb(null, true);
@@ -256,7 +245,11 @@ router.post('/', uploadCover.single('cover'), async (req, res) => {
       return res.status(400).json({ error: 'El título del libro es obligatorio' });
     }
 
-    const cover_local = req.file ? `/uploads/${req.file.filename}` : null;
+    let cover_local = null;
+    if (req.file) {
+      const result = await uploadBuffer(req.file.buffer, { folder: 'biblioteca/books' });
+      cover_local = result.secure_url;
+    }
 
     const { rows: inserted } = await pool.query(`
       INSERT INTO books (isbn, title, author, year, language, cover_url, cover_local, library_id, household_id, created_by)
@@ -285,11 +278,9 @@ router.put('/:id', uploadCover.single('cover'), async (req, res) => {
 
     let cover_local = book.cover_local;
     if (req.file) {
-      if (book.cover_local?.startsWith('/uploads/')) {
-        const oldPath = path.join(UPLOADS_DIR, path.basename(book.cover_local));
-        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-      }
-      cover_local = `/uploads/${req.file.filename}`;
+      await deleteByUrl(cover_local);
+      const result = await uploadBuffer(req.file.buffer, { folder: 'biblioteca/books' });
+      cover_local = result.secure_url;
     }
 
     await pool.query(`
@@ -313,11 +304,7 @@ router.delete('/:id', async (req, res) => {
     const book = rows[0];
     if (!book) return res.status(404).json({ error: 'Libro no encontrado' });
 
-    if (book.cover_local?.startsWith('/uploads/')) {
-      const filePath = path.join(UPLOADS_DIR, path.basename(book.cover_local));
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    }
-
+    await deleteByUrl(book.cover_local);
     await pool.query('DELETE FROM books WHERE id = $1', [req.params.id]);
     res.json({ message: 'Libro eliminado' });
   } catch (err) {

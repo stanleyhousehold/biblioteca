@@ -64,6 +64,8 @@ initDB()
       console.log(`Servidor en puerto ${PORT} [${IS_PROD ? 'producción' : 'desarrollo'}]`);
       console.log(`JWT_SECRET: ${process.env.JWT_SECRET ? 'configurado ✓' : 'NO CONFIGURADO ✗'}`);
       console.log(`Resend: ${process.env.RESEND_API_KEY ? 'configurado ✓' : 'no configurado (emails desactivados)'}`);
+      const cloudinaryOk = process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET;
+      console.log(`Cloudinary: ${cloudinaryOk ? 'configurado ✓' : 'NO CONFIGURADO ✗ — las subidas de imágenes fallarán'}`);
     });
   })
   .catch(err => {
