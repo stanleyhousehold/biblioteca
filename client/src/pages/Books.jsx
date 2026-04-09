@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { api } from '../api/api';
 import { useHousehold } from '../context/HouseholdContext';
+import BarcodeScanner from '../components/BarcodeScanner';
 
 function IconPlus() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>; }
 function IconEdit() { return <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>; }
@@ -77,6 +78,7 @@ function BookModal({ book, libraries, householdId, onClose, onSave }) {
   const [isbnMsg, setIsbnMsg] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   function handleCoverFile(e) {
     const file = e.target.files[0];
@@ -91,6 +93,12 @@ function BookModal({ book, libraries, householdId, onClose, onSave }) {
       const clean = isbnInput.replace(/[^0-9X]/gi, '');
       if (clean.length === 10 || clean.length === 13) await lookupIsbn(clean);
     }
+  }
+
+  async function handleScanDetected(isbn) {
+    setShowScanner(false);
+    setIsbnInput(isbn);
+    await lookupIsbn(isbn);
   }
 
   async function lookupIsbn(isbn) {
@@ -162,6 +170,11 @@ function BookModal({ book, libraries, householdId, onClose, onSave }) {
                 autoFocus={!book}
               />
             </div>
+            <button type="button" className="btn btn-secondary" style={{ height: 38, padding: '0 10px', flexShrink: 0 }}
+              onClick={() => setShowScanner(true)}
+              title="Escanear con cámara">
+              📷
+            </button>
             <button type="button" className="btn btn-secondary" style={{ height: 38, padding: '0 12px', flexShrink: 0 }}
               onClick={() => lookupIsbn(isbnInput.replace(/[^0-9X]/gi, ''))}
               disabled={fetchingIsbn || isbnInput.replace(/[^0-9X]/gi, '').length < 10}
@@ -170,6 +183,12 @@ function BookModal({ book, libraries, householdId, onClose, onSave }) {
             </button>
           </div>
           {isbnMsg && <p style={{ fontSize: 12, color: isbnMsg.startsWith('✓') ? 'var(--green-700)' : 'var(--amber-600)', marginBottom: 12, marginTop: 2 }}>{isbnMsg}</p>}
+          {showScanner && (
+            <BarcodeScanner
+              onDetected={handleScanDetected}
+              onClose={() => setShowScanner(false)}
+            />
+          )}
 
           <div className="field"><label>Título *</label><input placeholder="Título del libro" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} required /></div>
           <div className="field"><label>Autor</label><input placeholder="Nombre del autor" value={form.author} onChange={e => setForm(f => ({ ...f, author: e.target.value }))} /></div>

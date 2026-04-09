@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useHousehold } from '../context/HouseholdContext';
+import InstallBanner from './InstallBanner';
 
 function IconHome() { return <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>; }
 function IconBox() { return <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>; }
@@ -46,6 +47,15 @@ export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [offline, setOffline] = useState(!navigator.onLine);
+
+  useEffect(() => {
+    const on = () => setOffline(false);
+    const off = () => setOffline(true);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); };
+  }, []);
 
   function handleLogout() { logout(); navigate('/login'); }
 
@@ -115,8 +125,15 @@ export default function Layout({ children }) {
       )}
 
       <main className="main-content">
+        {offline && (
+          <div className="offline-notice">
+            <span>⚡</span> Sin conexión — mostrando datos en caché
+          </div>
+        )}
         <div className="content-inner">{children}</div>
       </main>
+
+      <InstallBanner />
 
       <style>{`
         .layout { display:flex; min-height:100vh; }
@@ -152,6 +169,8 @@ export default function Layout({ children }) {
 
         .main-content { margin-left:224px; flex:1; min-height:100vh; }
         .content-inner { padding:26px 30px; max-width:1100px; }
+
+        .offline-notice { background:var(--amber-50); border-bottom:1px solid var(--yellow-100); color:var(--amber-600); font-size:13px; font-weight:600; padding:8px 30px; display:flex; align-items:center; gap:6px; }
 
         .topbar { display:none; position:fixed; top:0; left:0; right:0; height:52px; background:white; border-bottom:1.5px solid var(--gray-100); align-items:center; justify-content:space-between; padding:0 12px; z-index:20; }
         .topbar-title { font-size:16px; font-weight:800; color:var(--teal-700); }
