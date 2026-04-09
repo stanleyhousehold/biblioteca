@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const { initDB } = require('./db/database');
 
 if (!process.env.JWT_SECRET) {
   console.error('FATAL: La variable de entorno JWT_SECRET no está definida.');
@@ -53,11 +54,19 @@ app.use((err, req, res, _next) => {
   res.status(500).json({ error: 'Error interno del servidor' });
 });
 
-app.listen(PORT, () => {
-  console.log(`Servidor en puerto ${PORT} [${IS_PROD ? 'producción' : 'desarrollo'}]`);
-  console.log(`JWT_SECRET: ${process.env.JWT_SECRET ? 'configurado ✓' : 'NO CONFIGURADO ✗'}`);
-  console.log(`Resend: ${process.env.RESEND_API_KEY ? 'configurado ✓' : 'no configurado (emails desactivados)'}`);
-});
-
 process.on('uncaughtException', err => console.error('[uncaughtException]', err));
 process.on('unhandledRejection', reason => console.error('[unhandledRejection]', reason));
+
+// ── Iniciar servidor tras conectar a la BD ────────────
+initDB()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Servidor en puerto ${PORT} [${IS_PROD ? 'producción' : 'desarrollo'}]`);
+      console.log(`JWT_SECRET: ${process.env.JWT_SECRET ? 'configurado ✓' : 'NO CONFIGURADO ✗'}`);
+      console.log(`Resend: ${process.env.RESEND_API_KEY ? 'configurado ✓' : 'no configurado (emails desactivados)'}`);
+    });
+  })
+  .catch(err => {
+    console.error('[FATAL] Error al inicializar la base de datos:', err.message);
+    process.exit(1);
+  });

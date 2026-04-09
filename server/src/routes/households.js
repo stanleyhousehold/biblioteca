@@ -1,6 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
-const db = require('../db/database');
+const { pool } = require('../db/database');
 const authMiddleware = require('../middleware/auth');
 
 const router = express.Router();
@@ -8,55 +8,67 @@ router.use(authMiddleware);
 
 const APP_URL = process.env.APP_URL || 'http://localhost:5173';
 
-// ── Helper: verify membership ─────────────────────────
-function isMember(householdId, userId) {
-  return !!db.prepare(
-    'SELECT id FROM household_members WHERE household_id = ? AND user_id = ?'
-  ).get(householdId, userId);
+// ── Helpers ───────────────────────────────────────────
+async function isMember(householdId, userId) {
+  const { rows } = await pool.query(
+    'SELECT id FROM household_members WHERE household_id = $1 AND user_id = $2',
+    [householdId, userId]
+  );
+  return rows.length > 0;
 }
-function isOwner(householdId, userId) {
-  return !!db.prepare(
-    'SELECT id FROM household_members WHERE household_id = ? AND user_id = ? AND role = ?'
-  ).get(householdId, userId, 'owner');
+
+async function isOwner(householdId, userId) {
+  const { rows } = await pool.query(
+    'SELECT id FROM household_members WHERE household_id = $1 AND user_id = $2 AND role = $3',
+    [householdId, userId, 'owner']
+  );
+  return rows.length > 0;
 }
 
 // ── GET /api/households ───────────────────────────────
-router.get('/', (req, res) => {
-  const households = db.prepare(`
-    SELECT h.*, hm.role,
-      (SELECT COUNT(*) FROM household_members WHERE household_id = h.id) AS member_count
-    FROM households h
-    JOIN household_members hm ON hm.household_id = h.id AND hm.user_id = ?
-    ORDER BY h.name
-  `).all(req.user.id);
-  res.json(households);
+router.get('/', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT h.*, hm.role,
+        (SELECT COUNT(*) FROM household_members WHERE household_id = h.id) AS member_count
+      FROM households h
+      JOIN household_members hm ON hm.household_id = h.id AND hm.user_id = $1
+      ORDER BY h.name
+    `, [req.user.id]);
+    res.json(rows);
+  } catch (err) {
+    console.error('[households list error]', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── POST /api/households ──────────────────────────────
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, emoji = '🏠' } = req.body;
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'El nombre del hogar es obligatorio' });
     }
 
-    const result = db.prepare(
-      'INSERT INTO households (name, created_by) VALUES (?, ?)'
-    ).run(name.trim(), req.user.id);
+    const { rows: hRows } = await pool.query(
+      'INSERT INTO households (name, emoji, created_by) VALUES ($1, $2, $3) RETURNING id',
+      [name.trim(), emoji, req.user.id]
+    );
+    const householdId = hRows[0].id;
 
-    // Creator is automatically owner
-    db.prepare(
-      'INSERT INTO household_members (household_id, user_id, role) VALUES (?, ?, ?)'
-    ).run(result.lastInsertRowid, req.user.id, 'owner');
+    await pool.query(
+      'INSERT INTO household_members (household_id, user_id, role) VALUES ($1, $2, $3)',
+      [householdId, req.user.id, 'owner']
+    );
 
-    const household = db.prepare(`
+    const { rows } = await pool.query(`
       SELECT h.*, hm.role, 1 AS member_count
       FROM households h
-      JOIN household_members hm ON hm.household_id = h.id AND hm.user_id = ?
-      WHERE h.id = ?
-    `).get(req.user.id, result.lastInsertRowid);
+      JOIN household_members hm ON hm.household_id = h.id AND hm.user_id = $1
+      WHERE h.id = $2
+    `, [req.user.id, householdId]);
 
-    res.status(201).json(household);
+    res.status(201).json(rows[0]);
   } catch (err) {
     console.error('[household create error]', err);
     res.status(500).json({ error: err.message });
@@ -64,69 +76,103 @@ router.post('/', (req, res) => {
 });
 
 // ── GET /api/households/:id ───────────────────────────
-router.get('/:id', (req, res) => {
-  if (!isMember(req.params.id, req.user.id)) {
-    return res.status(403).json({ error: 'No perteneces a este hogar' });
+router.get('/:id', async (req, res) => {
+  try {
+    if (!await isMember(req.params.id, req.user.id)) {
+      return res.status(403).json({ error: 'No perteneces a este hogar' });
+    }
+
+    const { rows: hRows } = await pool.query('SELECT * FROM households WHERE id = $1', [req.params.id]);
+    if (!hRows[0]) return res.status(404).json({ error: 'Hogar no encontrado' });
+
+    const { rows: members } = await pool.query(`
+      SELECT hm.role, hm.joined_at, u.id, u.name, u.username, u.photo_url
+      FROM household_members hm
+      JOIN users u ON u.id = hm.user_id
+      WHERE hm.household_id = $1
+      ORDER BY hm.role DESC, u.name
+    `, [req.params.id]);
+
+    res.json({ ...hRows[0], members });
+  } catch (err) {
+    console.error('[household get error]', err);
+    res.status(500).json({ error: err.message });
   }
-
-  const household = db.prepare('SELECT * FROM households WHERE id = ?').get(req.params.id);
-  if (!household) return res.status(404).json({ error: 'Hogar no encontrado' });
-
-  const members = db.prepare(`
-    SELECT hm.role, hm.joined_at, u.id, u.name, u.username, u.photo_url
-    FROM household_members hm
-    JOIN users u ON u.id = hm.user_id
-    WHERE hm.household_id = ?
-    ORDER BY hm.role DESC, u.name
-  `).all(req.params.id);
-
-  res.json({ ...household, members });
 });
 
 // ── PUT /api/households/:id ───────────────────────────
-router.put('/:id', (req, res) => {
-  if (!isOwner(req.params.id, req.user.id)) {
-    return res.status(403).json({ error: 'Solo el propietario puede editar el hogar' });
+router.put('/:id', async (req, res) => {
+  try {
+    if (!await isOwner(req.params.id, req.user.id)) {
+      return res.status(403).json({ error: 'Solo el propietario puede editar el hogar' });
+    }
+    const { name, emoji } = req.body;
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'El nombre es obligatorio' });
+    }
+
+    const fields = ['name = $1'];
+    const params = [name.trim()];
+    if (emoji) {
+      fields.push(`emoji = $${params.length + 1}`);
+      params.push(emoji);
+    }
+    params.push(req.params.id);
+
+    await pool.query(`UPDATE households SET ${fields.join(', ')} WHERE id = $${params.length}`, params);
+
+    const { rows } = await pool.query('SELECT * FROM households WHERE id = $1', [req.params.id]);
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('[household update error]', err);
+    res.status(500).json({ error: err.message });
   }
-  const { name } = req.body;
-  if (!name || !name.trim()) {
-    return res.status(400).json({ error: 'El nombre es obligatorio' });
-  }
-  db.prepare('UPDATE households SET name = ? WHERE id = ?').run(name.trim(), req.params.id);
-  res.json(db.prepare('SELECT * FROM households WHERE id = ?').get(req.params.id));
 });
 
 // ── DELETE /api/households/:id ────────────────────────
-router.delete('/:id', (req, res) => {
-  if (!isOwner(req.params.id, req.user.id)) {
-    return res.status(403).json({ error: 'Solo el propietario puede eliminar el hogar' });
+router.delete('/:id', async (req, res) => {
+  try {
+    if (!await isOwner(req.params.id, req.user.id)) {
+      return res.status(403).json({ error: 'Solo el propietario puede eliminar el hogar' });
+    }
+    await pool.query('DELETE FROM households WHERE id = $1', [req.params.id]);
+    res.json({ message: 'Hogar eliminado' });
+  } catch (err) {
+    console.error('[household delete error]', err);
+    res.status(500).json({ error: err.message });
   }
-  db.prepare('DELETE FROM households WHERE id = ?').run(req.params.id);
-  res.json({ message: 'Hogar eliminado' });
 });
 
 // ── POST /api/households/:id/invite ──────────────────
-router.post('/:id/invite', (req, res) => {
-  if (!isMember(req.params.id, req.user.id)) {
-    return res.status(403).json({ error: 'No perteneces a este hogar' });
+router.post('/:id/invite', async (req, res) => {
+  try {
+    if (!await isMember(req.params.id, req.user.id)) {
+      return res.status(403).json({ error: 'No perteneces a este hogar' });
+    }
+
+    const token = crypto.randomBytes(24).toString('hex');
+    const expires_at = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 días
+
+    await pool.query(
+      'INSERT INTO household_invites (household_id, token, created_by, expires_at) VALUES ($1, $2, $3, $4)',
+      [req.params.id, token, req.user.id, expires_at]
+    );
+
+    res.json({ invite_url: `${APP_URL}/unirse/${token}`, token, expires_at });
+  } catch (err) {
+    console.error('[household invite error]', err);
+    res.status(500).json({ error: err.message });
   }
-
-  const token = crypto.randomBytes(24).toString('hex');
-  const expires_at = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 días
-
-  db.prepare(
-    'INSERT INTO household_invites (household_id, token, created_by, expires_at) VALUES (?, ?, ?, ?)'
-  ).run(req.params.id, token, req.user.id, expires_at);
-
-  res.json({ invite_url: `${APP_URL}/unirse/${token}`, token, expires_at });
 });
 
 // ── POST /api/households/join/:token ─────────────────
-router.post('/join/:token', (req, res) => {
+router.post('/join/:token', async (req, res) => {
   try {
-    const invite = db.prepare(
-      'SELECT * FROM household_invites WHERE token = ? AND used = 0'
-    ).get(req.params.token);
+    const { rows: invRows } = await pool.query(
+      'SELECT * FROM household_invites WHERE token = $1 AND used = FALSE',
+      [req.params.token]
+    );
+    const invite = invRows[0];
 
     if (!invite) {
       return res.status(400).json({ error: 'El enlace de invitación no es válido o ya fue usado' });
@@ -134,18 +180,18 @@ router.post('/join/:token', (req, res) => {
     if (new Date(invite.expires_at) < new Date()) {
       return res.status(400).json({ error: 'El enlace de invitación ha expirado' });
     }
-    if (isMember(invite.household_id, req.user.id)) {
+    if (await isMember(invite.household_id, req.user.id)) {
       return res.status(400).json({ error: 'Ya eres miembro de este hogar' });
     }
 
-    db.prepare(
-      'INSERT INTO household_members (household_id, user_id, role) VALUES (?, ?, ?)'
-    ).run(invite.household_id, req.user.id, 'member');
+    await pool.query(
+      'INSERT INTO household_members (household_id, user_id, role) VALUES ($1, $2, $3)',
+      [invite.household_id, req.user.id, 'member']
+    );
+    await pool.query('UPDATE household_invites SET used = TRUE WHERE id = $1', [invite.id]);
 
-    db.prepare('UPDATE household_invites SET used = 1 WHERE id = ?').run(invite.id);
-
-    const household = db.prepare('SELECT * FROM households WHERE id = ?').get(invite.household_id);
-    res.json({ message: `Te has unido a "${household.name}" correctamente`, household });
+    const { rows } = await pool.query('SELECT * FROM households WHERE id = $1', [invite.household_id]);
+    res.json({ message: `Te has unido a "${rows[0].name}" correctamente`, household: rows[0] });
   } catch (err) {
     console.error('[join error]', err);
     res.status(500).json({ error: err.message });
@@ -153,21 +199,25 @@ router.post('/join/:token', (req, res) => {
 });
 
 // ── DELETE /api/households/:id/members/:userId ────────
-router.delete('/:id/members/:userId', (req, res) => {
-  const isSelf = req.params.userId == req.user.id;
-  if (!isSelf && !isOwner(req.params.id, req.user.id)) {
-    return res.status(403).json({ error: 'No tienes permiso para eliminar miembros' });
-  }
-  // Owner can't remove themselves
-  if (isSelf && isOwner(req.params.id, req.user.id)) {
-    return res.status(400).json({ error: 'El propietario no puede abandonar el hogar. Elimínalo o transfiere la propiedad.' });
-  }
+router.delete('/:id/members/:userId', async (req, res) => {
+  try {
+    const isSelf = req.params.userId == req.user.id;
+    if (!isSelf && !await isOwner(req.params.id, req.user.id)) {
+      return res.status(403).json({ error: 'No tienes permiso para eliminar miembros' });
+    }
+    if (isSelf && await isOwner(req.params.id, req.user.id)) {
+      return res.status(400).json({ error: 'El propietario no puede abandonar el hogar. Elimínalo o transfiere la propiedad.' });
+    }
 
-  db.prepare(
-    'DELETE FROM household_members WHERE household_id = ? AND user_id = ?'
-  ).run(req.params.id, req.params.userId);
-
-  res.json({ message: 'Miembro eliminado del hogar' });
+    await pool.query(
+      'DELETE FROM household_members WHERE household_id = $1 AND user_id = $2',
+      [req.params.id, req.params.userId]
+    );
+    res.json({ message: 'Miembro eliminado del hogar' });
+  } catch (err) {
+    console.error('[remove member error]', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;

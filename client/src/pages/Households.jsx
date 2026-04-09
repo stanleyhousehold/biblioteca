@@ -4,15 +4,62 @@ import { api } from '../api/api';
 import { useHousehold } from '../context/HouseholdContext';
 import { useAuth } from '../context/AuthContext';
 
+const EMOJIS = [
+  '🏠','🏡','🏢','🏣','🏤','🏥','🏦','🏨','🏩','🏪',
+  '🏫','🏬','🏭','🏰','🏯','🏛️','⛪','🕌','🛖','🏕️',
+  '🌳','🏔️','🌊','🌸','❄️','☀️','⭐','🌙','🔑','🌻',
+];
+
 function IconX() {
   return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>;
 }
 function IconCopy() {
   return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>;
 }
+function IconEdit() {
+  return <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>;
+}
+
+function EmojiPicker({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ fontSize: 32 }}>{value}</span>
+        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setOpen(o => !o)}>
+          {open ? 'Cerrar' : 'Cambiar icono'}
+        </button>
+      </div>
+      {open && (
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 10,
+          padding: 10, background: 'var(--gray-50)', borderRadius: 8,
+          border: '1px solid var(--gray-200)',
+        }}>
+          {EMOJIS.map(e => (
+            <button
+              key={e}
+              type="button"
+              style={{
+                fontSize: 22, padding: 5, border: '2px solid',
+                borderColor: e === value ? 'var(--teal-500)' : 'transparent',
+                borderRadius: 6, background: e === value ? 'var(--teal-50)' : 'none',
+                cursor: 'pointer', lineHeight: 1,
+              }}
+              onClick={() => { onChange(e); setOpen(false); }}
+            >
+              {e}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function CreateModal({ onClose, onCreated }) {
   const [name, setName] = useState('');
+  const [emoji, setEmoji] = useState('🏠');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -20,7 +67,7 @@ function CreateModal({ onClose, onCreated }) {
     e.preventDefault();
     setLoading(true);
     try {
-      const h = await api.households.create({ name });
+      const h = await api.households.create({ name, emoji });
       onCreated(h);
     } catch (err) {
       setError(err.message);
@@ -38,6 +85,10 @@ function CreateModal({ onClose, onCreated }) {
         </div>
         {error && <div className="alert alert-error">{error}</div>}
         <form onSubmit={handleSubmit}>
+          <div className="field">
+            <label>Icono del hogar</label>
+            <EmojiPicker value={emoji} onChange={setEmoji} />
+          </div>
           <div className="field">
             <label>Nombre del hogar</label>
             <input autoFocus placeholder="Ej: Casa de los Stanley" value={name} onChange={e => setName(e.target.value)} required />
@@ -60,18 +111,24 @@ function HouseholdDetail({ householdId }) {
   const [inviteUrl, setInviteUrl] = useState('');
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editEmoji, setEditEmoji] = useState('🏠');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    api.households.get(householdId).then(setDetail).catch(() => {}).finally(() => setLoading(false));
+    api.households.get(householdId).then(d => {
+      setDetail(d);
+      setEditName(d.name);
+      setEditEmoji(d.emoji || '🏠');
+    }).catch(() => {}).finally(() => setLoading(false));
   }, [householdId]);
 
   async function generateInvite() {
     try {
       const { invite_url } = await api.households.invite(householdId);
       setInviteUrl(invite_url);
-    } catch (err) {
-      alert(err.message);
-    }
+    } catch (err) { alert(err.message); }
   }
 
   async function copyInvite() {
@@ -85,9 +142,18 @@ function HouseholdDetail({ householdId }) {
     try {
       await api.households.removeMember(householdId, memberId);
       setDetail(d => ({ ...d, members: d.members.filter(m => m.id !== memberId) }));
-    } catch (err) {
-      alert(err.message);
-    }
+    } catch (err) { alert(err.message); }
+  }
+
+  async function handleSaveEdit(e) {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const updated = await api.households.update(householdId, { name: editName, emoji: editEmoji });
+      setDetail(d => ({ ...d, name: updated.name, emoji: updated.emoji }));
+      setEditOpen(false);
+    } catch (err) { alert(err.message); }
+    finally { setSaving(false); }
   }
 
   if (loading) return <div style={{ textAlign: 'center', padding: 24 }}><span className="spinner" /></div>;
@@ -98,9 +164,39 @@ function HouseholdDetail({ householdId }) {
   return (
     <div className="card" style={{ marginTop: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 800 }}>{detail.name}</h2>
-        <span className="badge">{detail.members?.length} miembro{detail.members?.length !== 1 ? 's' : ''}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 28 }}>{detail.emoji || '🏠'}</span>
+          <h2 style={{ fontSize: 18, fontWeight: 800 }}>{detail.name}</h2>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {amOwner && (
+            <button className="btn btn-ghost btn-sm" onClick={() => setEditOpen(o => !o)}>
+              <IconEdit /> Editar
+            </button>
+          )}
+          <span className="badge">{detail.members?.length} miembro{detail.members?.length !== 1 ? 's' : ''}</span>
+        </div>
       </div>
+
+      {/* Edit form for owners */}
+      {editOpen && amOwner && (
+        <form onSubmit={handleSaveEdit} style={{ marginBottom: 20, padding: 14, background: 'var(--gray-50)', borderRadius: 8, border: '1px solid var(--gray-200)' }}>
+          <div className="field">
+            <label style={{ fontSize: 13 }}>Icono</label>
+            <EmojiPicker value={editEmoji} onChange={setEditEmoji} />
+          </div>
+          <div className="field">
+            <label style={{ fontSize: 13 }}>Nombre</label>
+            <input value={editName} onChange={e => setEditName(e.target.value)} required />
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="submit" className="btn btn-primary btn-sm" disabled={saving}>
+              {saving ? 'Guardando...' : 'Guardar'}
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditOpen(false)}>Cancelar</button>
+          </div>
+        </form>
+      )}
 
       {/* Members */}
       <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--gray-500)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.05em' }}>Miembros</h3>
@@ -141,12 +237,12 @@ function HouseholdDetail({ householdId }) {
   );
 }
 
-// ── Join via token (route: /unirse/:token) ────────────
+// ── Join via token ────────────────────────────────────
 export function JoinHousehold() {
   const { token } = useParams();
   const navigate = useNavigate();
   const { reloadHouseholds, switchHousehold } = useHousehold();
-  const [state, setState] = useState('joining'); // joining | success | error
+  const [state, setState] = useState('joining');
   const [message, setMessage] = useState('');
 
   useEffect(() => {
@@ -215,7 +311,6 @@ export default function Households() {
       </div>
 
       <div className="households-layout">
-        {/* List */}
         <aside className="card" style={{ padding: 16 }}>
           <h3 style={{ fontSize: 13, fontWeight: 700, color: 'var(--gray-500)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: '.05em' }}>Mis hogares</h3>
           {households.length === 0 ? (
@@ -228,30 +323,28 @@ export default function Households() {
                   className={`household-chip${selectedId === h.id ? ' active' : ''}`}
                   onClick={() => setSelectedId(h.id)}
                 >
-                  <div>
-                    <div style={{ fontWeight: 700, fontSize: 13 }}>{h.name}</div>
-                    <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>{h.role === 'owner' ? 'Propietario' : 'Miembro'}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+                    <span style={{ fontSize: 18, flexShrink: 0 }}>{h.emoji || '🏠'}</span>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{h.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--gray-400)' }}>{h.role === 'owner' ? 'Propietario' : 'Miembro'}</div>
+                    </div>
                   </div>
-                  {currentHouseholdId === h.id && <span className="badge" style={{ fontSize: 10 }}>Activo</span>}
+                  {currentHouseholdId === h.id && <span className="badge" style={{ fontSize: 10, flexShrink: 0 }}>Activo</span>}
                 </li>
               ))}
             </ul>
           )}
         </aside>
 
-        {/* Detail */}
         <div>
           {selectedId && (
             <>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
                 {currentHouseholdId === selectedId ? (
-                  <button className="btn btn-secondary btn-sm" onClick={() => switchHousehold(null)}>
-                    Desactivar hogar
-                  </button>
+                  <button className="btn btn-secondary btn-sm" onClick={() => switchHousehold(null)}>Desactivar hogar</button>
                 ) : (
-                  <button className="btn btn-primary btn-sm" onClick={() => switchHousehold(selectedId)}>
-                    Cambiar a este hogar
-                  </button>
+                  <button className="btn btn-primary btn-sm" onClick={() => switchHousehold(selectedId)}>Cambiar a este hogar</button>
                 )}
                 {households.find(h => h.id === selectedId)?.role === 'owner' && (
                   <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red-500)' }} onClick={() => handleDelete(selectedId)}>
@@ -263,9 +356,7 @@ export default function Households() {
             </>
           )}
           {!selectedId && households.length > 0 && (
-            <div className="card empty-state">
-              <p>Selecciona un hogar para ver sus detalles</p>
-            </div>
+            <div className="card empty-state"><p>Selecciona un hogar para ver sus detalles</p></div>
           )}
         </div>
       </div>

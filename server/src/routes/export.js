@@ -1,12 +1,12 @@
 const express = require('express');
-const db = require('../db/database');
+const { pool } = require('../db/database');
 const authMiddleware = require('../middleware/auth');
 
 const router = express.Router();
 router.use(authMiddleware);
 
 // ── GET /api/export?household_id= ────────────────────
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const { household_id } = req.query;
     const userId = req.user.id;
@@ -14,35 +14,35 @@ router.get('/', (req, res) => {
     let rooms, items, libraries, books;
 
     if (household_id) {
-      const isMember = db.prepare(
-        'SELECT id FROM household_members WHERE household_id = ? AND user_id = ?'
-      ).get(household_id, userId);
-      if (!isMember) return res.status(403).json({ error: 'No perteneces a este hogar' });
+      const { rows: membership } = await pool.query(
+        'SELECT id FROM household_members WHERE household_id = $1 AND user_id = $2',
+        [household_id, userId]
+      );
+      if (!membership.length) return res.status(403).json({ error: 'No perteneces a este hogar' });
 
-      rooms = db.prepare('SELECT * FROM rooms WHERE household_id = ?').all(household_id);
-      items = db.prepare('SELECT * FROM items WHERE household_id = ?').all(household_id);
-      libraries = db.prepare('SELECT * FROM libraries WHERE household_id = ?').all(household_id);
-      books = db.prepare('SELECT * FROM books WHERE household_id = ?').all(household_id);
+      [{ rows: rooms }, { rows: items }, { rows: libraries }, { rows: books }] = await Promise.all([
+        pool.query('SELECT * FROM rooms WHERE household_id = $1', [household_id]),
+        pool.query('SELECT * FROM items WHERE household_id = $1', [household_id]),
+        pool.query('SELECT * FROM libraries WHERE household_id = $1', [household_id]),
+        pool.query('SELECT * FROM books WHERE household_id = $1', [household_id]),
+      ]);
     } else {
-      rooms = db.prepare('SELECT * FROM rooms WHERE household_id IS NULL AND created_by = ?').all(userId);
-      items = db.prepare('SELECT * FROM items WHERE household_id IS NULL AND created_by = ?').all(userId);
-      libraries = db.prepare('SELECT * FROM libraries WHERE household_id IS NULL AND created_by = ?').all(userId);
-      books = db.prepare('SELECT * FROM books WHERE household_id IS NULL AND created_by = ?').all(userId);
+      [{ rows: rooms }, { rows: items }, { rows: libraries }, { rows: books }] = await Promise.all([
+        pool.query('SELECT * FROM rooms WHERE household_id IS NULL AND created_by = $1', [userId]),
+        pool.query('SELECT * FROM items WHERE household_id IS NULL AND created_by = $1', [userId]),
+        pool.query('SELECT * FROM libraries WHERE household_id IS NULL AND created_by = $1', [userId]),
+        pool.query('SELECT * FROM books WHERE household_id IS NULL AND created_by = $1', [userId]),
+      ]);
     }
-
-    const payload = {
-      exported_at: new Date().toISOString(),
-      exported_by: req.user.username,
-      household_id: household_id || null,
-      rooms,
-      items,
-      libraries,
-      books,
-    };
 
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', `attachment; filename="biblioteca-export-${Date.now()}.json"`);
-    res.json(payload);
+    res.json({
+      exported_at: new Date().toISOString(),
+      exported_by: req.user.username,
+      household_id: household_id || null,
+      rooms, items, libraries, books,
+    });
   } catch (err) {
     console.error('[export error]', err);
     res.status(500).json({ error: err.message });
@@ -50,74 +50,80 @@ router.get('/', (req, res) => {
 });
 
 // ── POST /api/export/import ───────────────────────────
-router.post('/import', (req, res) => {
-  try {
-    const { rooms = [], items = [], libraries = [], books = [], household_id } = req.body;
-    const userId = req.user.id;
+router.post('/import', async (req, res) => {
+  const { rooms = [], items = [], libraries = [], books = [], household_id } = req.body;
+  const userId = req.user.id;
 
-    if (household_id) {
-      const isMember = db.prepare(
-        'SELECT id FROM household_members WHERE household_id = ? AND user_id = ?'
-      ).get(household_id, userId);
-      if (!isMember) return res.status(403).json({ error: 'No perteneces a este hogar' });
+  if (household_id) {
+    const { rows } = await pool.query(
+      'SELECT id FROM household_members WHERE household_id = $1 AND user_id = $2',
+      [household_id, userId]
+    );
+    if (!rows.length) return res.status(403).json({ error: 'No perteneces a este hogar' });
+  }
+
+  const stats = { rooms: 0, items: 0, libraries: 0, books: 0 };
+  const roomIdMap = {};
+  const libraryIdMap = {};
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    for (const r of rooms) {
+      const { rows } = await client.query(
+        'INSERT INTO rooms (name, household_id, created_by) VALUES ($1, $2, $3) RETURNING id',
+        [r.name, household_id || null, userId]
+      );
+      roomIdMap[r.id] = rows[0].id;
+      stats.rooms++;
     }
 
-    const stats = { rooms: 0, items: 0, libraries: 0, books: 0 };
+    for (const i of items) {
+      await client.query(`
+        INSERT INTO items (name, description, room_id, household_id, photo_url, created_by)
+        VALUES ($1, $2, $3, $4, $5, $6)
+      `, [
+        i.name, i.description || null,
+        i.room_id ? (roomIdMap[i.room_id] || null) : null,
+        household_id || null,
+        i.photo_url || null,
+        userId,
+      ]);
+      stats.items++;
+    }
 
-    // ID mapping (old ID → new ID) to preserve room/library references
-    const roomIdMap = {};
-    const libraryIdMap = {};
+    for (const l of libraries) {
+      const { rows } = await client.query(
+        'INSERT INTO libraries (name, household_id, created_by) VALUES ($1, $2, $3) RETURNING id',
+        [l.name, household_id || null, userId]
+      );
+      libraryIdMap[l.id] = rows[0].id;
+      stats.libraries++;
+    }
 
-    db.transaction(() => {
-      for (const r of rooms) {
-        const result = db.prepare(
-          'INSERT INTO rooms (name, household_id, created_by) VALUES (?, ?, ?)'
-        ).run(r.name, household_id || null, userId);
-        roomIdMap[r.id] = result.lastInsertRowid;
-        stats.rooms++;
-      }
+    for (const b of books) {
+      await client.query(`
+        INSERT INTO books (isbn, title, author, year, language, cover_url, library_id, household_id, created_by)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `, [
+        b.isbn || null, b.title, b.author || null, b.year || null, b.language || null,
+        b.cover_url || null,
+        b.library_id ? (libraryIdMap[b.library_id] || null) : null,
+        household_id || null,
+        userId,
+      ]);
+      stats.books++;
+    }
 
-      for (const i of items) {
-        db.prepare(`
-          INSERT INTO items (name, description, room_id, household_id, photo_url, created_by)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(
-          i.name, i.description || null,
-          i.room_id ? (roomIdMap[i.room_id] || null) : null,
-          household_id || null,
-          i.photo_url || null,
-          userId
-        );
-        stats.items++;
-      }
-
-      for (const l of libraries) {
-        const result = db.prepare(
-          'INSERT INTO libraries (name, household_id, created_by) VALUES (?, ?, ?)'
-        ).run(l.name, household_id || null, userId);
-        libraryIdMap[l.id] = result.lastInsertRowid;
-        stats.libraries++;
-      }
-
-      for (const b of books) {
-        db.prepare(`
-          INSERT INTO books (isbn, title, author, year, language, cover_url, library_id, household_id, created_by)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(
-          b.isbn || null, b.title, b.author || null, b.year || null, b.language || null,
-          b.cover_url || null,
-          b.library_id ? (libraryIdMap[b.library_id] || null) : null,
-          household_id || null,
-          userId
-        );
-        stats.books++;
-      }
-    })();
-
+    await client.query('COMMIT');
     res.json({ message: 'Importación completada', stats });
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('[import error]', err);
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 });
 

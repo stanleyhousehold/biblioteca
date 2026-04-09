@@ -4,7 +4,7 @@ import { api } from '../api/api';
 import { useAuth } from '../context/AuthContext';
 
 export default function Register() {
-  const [form, setForm] = useState({ name: '', username: '', password: '', confirm: '' });
+  const [form, setForm] = useState({ name: '', username: '', email: '', password: '', confirm: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -21,6 +21,7 @@ export default function Register() {
       const { token, user } = await api.auth.register({
         name: form.name,
         username: form.username,
+        email: form.email,
         password: form.password,
       });
       login(token, user);
@@ -63,7 +64,18 @@ export default function Register() {
               type="text"
               placeholder="usuario (sin espacios)"
               value={form.username}
-              onChange={e => setForm(f => ({ ...f, username: e.target.value.toLowerCase().replace(/\s/g,'') }))}
+              onChange={e => setForm(f => ({ ...f, username: e.target.value.toLowerCase().replace(/\s/g, '') }))}
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="email">Email <span style={{ fontSize: 11, color: 'var(--gray-400)', fontWeight: 400 }}>(necesario para recuperar contraseña)</span></label>
+            <input
+              id="email"
+              type="email"
+              placeholder="tu@email.com"
+              value={form.email}
+              onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
               required
             />
           </div>
@@ -108,7 +120,7 @@ export default function Register() {
           background: linear-gradient(135deg, var(--teal-50) 0%, var(--green-50) 100%);
           padding: 24px;
         }
-        .auth-box { width: 100%; max-width: 380px; padding: 36px 32px; }
+        .auth-box { width: 100%; max-width: 400px; padding: 36px 32px; }
         .auth-logo { text-align: center; margin-bottom: 28px; }
         .auth-logo-icon { font-size: 48px; display: block; margin-bottom: 8px; }
         .auth-logo h1 { font-size: 26px; font-weight: 800; color: var(--teal-700); margin-bottom: 4px; }

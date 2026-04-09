@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
-const db = require('../db/database');
+const { pool } = require('../db/database');
 const authMiddleware = require('../middleware/auth');
 
 const router = express.Router();
@@ -49,6 +49,12 @@ router.post('/register', async (req, res) => {
     if (!name || !username || !password) {
       return res.status(400).json({ error: 'Nombre, usuario y contraseña son obligatorios' });
     }
+    if (!email || !email.trim()) {
+      return res.status(400).json({ error: 'El email es obligatorio para recuperar la contraseña' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      return res.status(400).json({ error: 'El formato del email no es válido' });
+    }
     if (username.length < 3) {
       return res.status(400).json({ error: 'El nombre de usuario debe tener al menos 3 caracteres' });
     }
@@ -56,23 +62,34 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
     }
 
-    const existing = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
-    if (existing) {
+    const { rows: existing } = await pool.query(
+      'SELECT id FROM users WHERE username = $1', [username]
+    );
+    if (existing.length > 0) {
       return res.status(409).json({ error: 'Ese nombre de usuario ya está en uso' });
     }
 
+    const { rows: existingEmail } = await pool.query(
+      'SELECT id FROM users WHERE email = $1', [email.trim()]
+    );
+    if (existingEmail.length > 0) {
+      return res.status(409).json({ error: 'Ese email ya está registrado' });
+    }
+
     const password_hash = await bcrypt.hash(password, 10);
-    const result = db.prepare(
-      'INSERT INTO users (name, username, password_hash, email) VALUES (?, ?, ?, ?)'
-    ).run(name, username, password_hash, email || null);
+    const { rows } = await pool.query(
+      'INSERT INTO users (name, username, password_hash, email) VALUES ($1, $2, $3, $4) RETURNING id',
+      [name, username, password_hash, email.trim()]
+    );
+    const userId = rows[0].id;
 
     const token = jwt.sign(
-      { id: result.lastInsertRowid, username, name },
+      { id: userId, username, name },
       process.env.JWT_SECRET,
       { expiresIn: '30d' }
     );
 
-    res.status(201).json({ token, user: { id: result.lastInsertRowid, name, username, email: email || null } });
+    res.status(201).json({ token, user: { id: userId, name, username, email: email.trim() } });
   } catch (err) {
     console.error('[register error]', err);
     res.status(500).json({ error: `Error al registrar usuario: ${err.message}` });
@@ -87,7 +104,8 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Usuario y contraseña son obligatorios' });
     }
 
-    const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+    const { rows } = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+    const user = rows[0];
     if (!user) {
       return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
     }
@@ -111,11 +129,14 @@ router.post('/login', async (req, res) => {
 });
 
 // ── GET /api/auth/me ──────────────────────────────────
-router.get('/me', authMiddleware, (req, res) => {
+router.get('/me', authMiddleware, async (req, res) => {
   try {
-    const user = db.prepare('SELECT id, name, username, email, photo_url, created_at FROM users WHERE id = ?').get(req.user.id);
-    if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
-    res.json(user);
+    const { rows } = await pool.query(
+      'SELECT id, name, username, email, photo_url, created_at FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Usuario no encontrado' });
+    res.json(rows[0]);
   } catch (err) {
     console.error('[me error]', err);
     res.status(500).json({ error: `Error al obtener usuario: ${err.message}` });
@@ -129,10 +150,15 @@ router.put('/profile', authMiddleware, async (req, res) => {
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'El nombre es obligatorio' });
     }
-    db.prepare('UPDATE users SET name = ?, email = ? WHERE id = ?')
-      .run(name.trim(), email || null, req.user.id);
-    const user = db.prepare('SELECT id, name, username, email, photo_url, created_at FROM users WHERE id = ?').get(req.user.id);
-    res.json(user);
+    await pool.query(
+      'UPDATE users SET name = $1, email = $2 WHERE id = $3',
+      [name.trim(), email || null, req.user.id]
+    );
+    const { rows } = await pool.query(
+      'SELECT id, name, username, email, photo_url, created_at FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    res.json(rows[0]);
   } catch (err) {
     console.error('[profile update error]', err);
     res.status(500).json({ error: `Error al actualizar perfil: ${err.message}` });
@@ -141,22 +167,27 @@ router.put('/profile', authMiddleware, async (req, res) => {
 
 // ── PUT /api/auth/profile/photo ───────────────────────
 router.put('/profile/photo', authMiddleware, (req, res) => {
-  uploadProfile.single('photo')(req, res, (uploadErr) => {
+  uploadProfile.single('photo')(req, res, async (uploadErr) => {
     if (uploadErr) return res.status(400).json({ error: uploadErr.message });
     if (!req.file) return res.status(400).json({ error: 'No se recibió ninguna imagen' });
 
     try {
-      const current = db.prepare('SELECT photo_url FROM users WHERE id = ?').get(req.user.id);
-      if (current?.photo_url && current.photo_url.startsWith('/uploads/')) {
-        const oldPath = path.join(UPLOADS_DIR, path.basename(current.photo_url));
+      const { rows: current } = await pool.query(
+        'SELECT photo_url FROM users WHERE id = $1', [req.user.id]
+      );
+      if (current[0]?.photo_url?.startsWith('/uploads/')) {
+        const oldPath = path.join(UPLOADS_DIR, path.basename(current[0].photo_url));
         if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
       }
 
       const photo_url = `/uploads/${req.file.filename}`;
-      db.prepare('UPDATE users SET photo_url = ? WHERE id = ?').run(photo_url, req.user.id);
+      await pool.query('UPDATE users SET photo_url = $1 WHERE id = $2', [photo_url, req.user.id]);
 
-      const user = db.prepare('SELECT id, name, username, email, photo_url, created_at FROM users WHERE id = ?').get(req.user.id);
-      res.json(user);
+      const { rows } = await pool.query(
+        'SELECT id, name, username, email, photo_url, created_at FROM users WHERE id = $1',
+        [req.user.id]
+      );
+      res.json(rows[0]);
     } catch (err) {
       console.error('[profile photo error]', err);
       res.status(500).json({ error: `Error al guardar la foto: ${err.message}` });
@@ -172,18 +203,26 @@ router.post('/forgot-password', async (req, res) => {
       return res.status(400).json({ error: 'El nombre de usuario es obligatorio' });
     }
 
-    const user = db.prepare('SELECT id, name, email FROM users WHERE username = ?').get(username);
-    // Siempre respuesta OK para no revelar si el usuario existe
+    const { rows } = await pool.query(
+      'SELECT id, name, email FROM users WHERE username = $1', [username]
+    );
+    const user = rows[0];
+    // Always return OK to not reveal if user exists
     if (!user || !user.email) {
       return res.json({ message: 'Si el usuario existe y tiene email configurado, recibirás un enlace de recuperación.' });
     }
 
-    // Invalidar tokens anteriores
-    db.prepare('UPDATE password_reset_tokens SET used = 1 WHERE user_id = ? AND used = 0').run(user.id);
+    await pool.query(
+      'UPDATE password_reset_tokens SET used = TRUE WHERE user_id = $1 AND used = FALSE',
+      [user.id]
+    );
 
     const token = crypto.randomBytes(32).toString('hex');
-    const expires_at = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hora
-    db.prepare('INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES (?, ?, ?)').run(user.id, token, expires_at);
+    const expires_at = new Date(Date.now() + 60 * 60 * 1000); // 1 hora
+    await pool.query(
+      'INSERT INTO password_reset_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)',
+      [user.id, token, expires_at]
+    );
 
     const resetUrl = `${APP_URL}/reset-password?token=${token}`;
 
@@ -201,7 +240,6 @@ router.post('/forgot-password', async (req, res) => {
         `,
       });
     } else {
-      // Sin Resend configurado: mostrar en consola (útil en desarrollo)
       console.log(`[ForgotPassword] Enlace de recuperación para ${user.email}: ${resetUrl}`);
     }
 
@@ -223,10 +261,11 @@ router.post('/reset-password', async (req, res) => {
       return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres' });
     }
 
-    const record = db.prepare(
-      'SELECT * FROM password_reset_tokens WHERE token = ? AND used = 0'
-    ).get(token);
-
+    const { rows } = await pool.query(
+      'SELECT * FROM password_reset_tokens WHERE token = $1 AND used = FALSE',
+      [token]
+    );
+    const record = rows[0];
     if (!record) {
       return res.status(400).json({ error: 'El enlace no es válido o ya fue usado' });
     }
@@ -235,8 +274,8 @@ router.post('/reset-password', async (req, res) => {
     }
 
     const password_hash = await bcrypt.hash(password, 10);
-    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(password_hash, record.user_id);
-    db.prepare('UPDATE password_reset_tokens SET used = 1 WHERE id = ?').run(record.id);
+    await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [password_hash, record.user_id]);
+    await pool.query('UPDATE password_reset_tokens SET used = TRUE WHERE id = $1', [record.id]);
 
     res.json({ message: 'Contraseña restablecida correctamente. Ya puedes iniciar sesión.' });
   } catch (err) {
