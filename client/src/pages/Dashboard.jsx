@@ -6,20 +6,21 @@ import { useHousehold } from '../context/HouseholdContext';
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const { householdParams, currentHousehold, personalEmoji } = useHousehold();
+  const { currentHouseholdId, currentHousehold, personalEmoji } = useHousehold();
   const [stats, setStats] = useState(null);
 
   useEffect(() => {
+    const params = currentHouseholdId ? { household_id: currentHouseholdId } : {};
     setStats(null);
     Promise.all([
-      api.inventory.getRooms(householdParams),
-      api.inventory.getItems(householdParams),
-      api.books.getLibraries(householdParams),
-      api.books.getBooks(householdParams),
+      api.inventory.getRooms(params),
+      api.inventory.getItems(params),
+      api.books.getLibraries(params),
+      api.books.getBooks(params),
     ]).then(([rooms, items, libraries, books]) => {
       setStats({ rooms: rooms.length, items: items.length, libraries: libraries.length, books: books.length });
     }).catch(() => {});
-  }, [householdParams]);
+  }, [currentHouseholdId]);
 
   const cards = [
     {
