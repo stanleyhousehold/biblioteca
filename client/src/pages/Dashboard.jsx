@@ -2,21 +2,24 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../api/api';
 import { useAuth } from '../context/AuthContext';
+import { useHousehold } from '../context/HouseholdContext';
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { householdParams, currentHousehold, personalEmoji } = useHousehold();
   const [stats, setStats] = useState(null);
 
   useEffect(() => {
+    setStats(null);
     Promise.all([
-      api.inventory.getRooms(),
-      api.inventory.getItems(),
-      api.books.getLibraries(),
-      api.books.getBooks(),
+      api.inventory.getRooms(householdParams),
+      api.inventory.getItems(householdParams),
+      api.books.getLibraries(householdParams),
+      api.books.getBooks(householdParams),
     ]).then(([rooms, items, libraries, books]) => {
       setStats({ rooms: rooms.length, items: items.length, libraries: libraries.length, books: books.length });
     }).catch(() => {});
-  }, []);
+  }, [householdParams]);
 
   const cards = [
     {
@@ -46,7 +49,9 @@ export default function Dashboard() {
           Bienvenido, {user?.name} 👋
         </h1>
         <p style={{ fontSize: 14, color: 'var(--gray-500)' }}>
-          Gestiona el inventario del hogar y tu colección de libros
+          {currentHousehold
+            ? `Viendo: ${currentHousehold.emoji || '🏠'} ${currentHousehold.name}`
+            : `Viendo: ${personalEmoji} Personal`}
         </p>
       </div>
 
