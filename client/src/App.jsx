@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { HouseholdProvider } from './context/HouseholdContext';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -8,6 +9,9 @@ import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
 import Books from './pages/Books';
 import Profile from './pages/Profile';
+import Households, { JoinHousehold } from './pages/Households';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth();
@@ -32,17 +36,23 @@ function PublicRoute({ children }) {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-          <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
-          <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-          <Route path="/inventario" element={<PrivateRoute><Inventory /></PrivateRoute>} />
-          <Route path="/libros" element={<PrivateRoute><Books /></PrivateRoute>} />
-          <Route path="/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
+      <HouseholdProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+            <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
+            <Route path="/recuperar-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
+            <Route path="/reset-password" element={<PublicRoute><ResetPassword /></PublicRoute>} />
+            <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+            <Route path="/inventario" element={<PrivateRoute><Inventory /></PrivateRoute>} />
+            <Route path="/libros" element={<PrivateRoute><Books /></PrivateRoute>} />
+            <Route path="/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
+            <Route path="/hogares" element={<PrivateRoute><Households /></PrivateRoute>} />
+            <Route path="/unirse/:token" element={<PrivateRoute><JoinHousehold /></PrivateRoute>} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </HouseholdProvider>
     </AuthProvider>
   );
 }

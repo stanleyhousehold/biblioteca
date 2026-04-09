@@ -7,11 +7,8 @@ const authMiddleware = require('../middleware/auth');
 
 const router = express.Router();
 
-// Configure multer for photo uploads
 const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, '../../uploads');
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-}
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: UPLOADS_DIR,
@@ -22,38 +19,67 @@ const storage = multer.diskStorage({
 });
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) cb(null, true);
     else cb(new Error('Solo se permiten imágenes'));
   },
 });
 
-// All routes require auth
 router.use(authMiddleware);
+
+// ── Helper: check household membership ───────────────
+function isMember(householdId, userId) {
+  if (!householdId) return true; // personal space
+  return !!db.prepare(
+    'SELECT id FROM household_members WHERE household_id = ? AND user_id = ?'
+  ).get(householdId, userId);
+}
 
 // ── ROOMS ──────────────────────────────────────────────
 
-// GET /api/inventory/rooms
+// GET /api/inventory/rooms?household_id=
 router.get('/rooms', (req, res) => {
-  const rooms = db.prepare(`
-    SELECT r.*, u.name AS created_by_name
-    FROM rooms r
-    JOIN users u ON u.id = r.created_by
-    ORDER BY r.name
-  `).all();
-  res.json(rooms);
+  const { household_id } = req.query;
+
+  let sql, params;
+  if (household_id) {
+    if (!isMember(household_id, req.user.id)) {
+      return res.status(403).json({ error: 'No perteneces a este hogar' });
+    }
+    sql = `
+      SELECT r.*, u.name AS created_by_name
+      FROM rooms r JOIN users u ON u.id = r.created_by
+      WHERE r.household_id = ?
+      ORDER BY r.name
+    `;
+    params = [household_id];
+  } else {
+    sql = `
+      SELECT r.*, u.name AS created_by_name
+      FROM rooms r JOIN users u ON u.id = r.created_by
+      WHERE r.household_id IS NULL AND r.created_by = ?
+      ORDER BY r.name
+    `;
+    params = [req.user.id];
+  }
+
+  res.json(db.prepare(sql).all(...params));
 });
 
 // POST /api/inventory/rooms
 router.post('/rooms', (req, res) => {
-  const { name } = req.body;
+  const { name, household_id } = req.body;
   if (!name || !name.trim()) {
     return res.status(400).json({ error: 'El nombre de la habitación es obligatorio' });
   }
+  if (household_id && !isMember(household_id, req.user.id)) {
+    return res.status(403).json({ error: 'No perteneces a este hogar' });
+  }
+
   const result = db.prepare(
-    'INSERT INTO rooms (name, created_by) VALUES (?, ?)'
-  ).run(name.trim(), req.user.id);
+    'INSERT INTO rooms (name, household_id, created_by) VALUES (?, ?, ?)'
+  ).run(name.trim(), household_id || null, req.user.id);
 
   const room = db.prepare(`
     SELECT r.*, u.name AS created_by_name
@@ -64,20 +90,42 @@ router.post('/rooms', (req, res) => {
   res.status(201).json(room);
 });
 
+// PUT /api/inventory/rooms/:id
+router.put('/rooms/:id', (req, res) => {
+  const room = db.prepare('SELECT * FROM rooms WHERE id = ?').get(req.params.id);
+  if (!room) return res.status(404).json({ error: 'Habitación no encontrada' });
+  if (!isMember(room.household_id, req.user.id) && room.created_by !== req.user.id) {
+    return res.status(403).json({ error: 'Sin permiso para editar esta habitación' });
+  }
+
+  const { name } = req.body;
+  if (!name || !name.trim()) {
+    return res.status(400).json({ error: 'El nombre es obligatorio' });
+  }
+
+  db.prepare('UPDATE rooms SET name = ? WHERE id = ?').run(name.trim(), req.params.id);
+  const updated = db.prepare(`
+    SELECT r.*, u.name AS created_by_name
+    FROM rooms r JOIN users u ON u.id = r.created_by
+    WHERE r.id = ?
+  `).get(req.params.id);
+  res.json(updated);
+});
+
 // DELETE /api/inventory/rooms/:id
 router.delete('/rooms/:id', (req, res) => {
   const room = db.prepare('SELECT * FROM rooms WHERE id = ?').get(req.params.id);
   if (!room) return res.status(404).json({ error: 'Habitación no encontrada' });
-
   db.prepare('DELETE FROM rooms WHERE id = ?').run(req.params.id);
   res.json({ message: 'Habitación eliminada' });
 });
 
 // ── ITEMS ──────────────────────────────────────────────
 
-// GET /api/inventory/items?search=&room_id=
+// GET /api/inventory/items?search=&room_id=&household_id=
 router.get('/items', (req, res) => {
-  const { search, room_id } = req.query;
+  const { search, room_id, household_id } = req.query;
+
   let sql = `
     SELECT i.*, r.name AS room_name, u.name AS created_by_name,
            uu.name AS updated_by_name
@@ -89,15 +137,27 @@ router.get('/items', (req, res) => {
   const params = [];
   const conditions = [];
 
+  if (household_id) {
+    if (!isMember(household_id, req.user.id)) {
+      return res.status(403).json({ error: 'No perteneces a este hogar' });
+    }
+    conditions.push('i.household_id = ?');
+    params.push(household_id);
+  } else {
+    conditions.push('i.household_id IS NULL AND i.created_by = ?');
+    params.push(req.user.id);
+  }
+
   if (search) {
-    conditions.push("(i.name LIKE ? OR i.description LIKE ?)");
+    conditions.push('(i.name LIKE ? OR i.description LIKE ?)');
     params.push(`%${search}%`, `%${search}%`);
   }
   if (room_id) {
-    conditions.push("i.room_id = ?");
+    conditions.push('i.room_id = ?');
     params.push(room_id);
   }
-  if (conditions.length) sql += ' WHERE ' + conditions.join(' AND ');
+
+  sql += ' WHERE ' + conditions.join(' AND ');
   sql += ' ORDER BY i.created_at DESC';
 
   res.json(db.prepare(sql).all(...params));
@@ -105,20 +165,19 @@ router.get('/items', (req, res) => {
 
 // POST /api/inventory/items
 router.post('/items', upload.single('photo'), (req, res) => {
-  const { name, description, room_id } = req.body;
+  const { name, description, room_id, household_id } = req.body;
   if (!name || !name.trim()) {
     return res.status(400).json({ error: 'El nombre del objeto es obligatorio' });
   }
 
   const photo_url = req.file ? `/uploads/${req.file.filename}` : null;
   const result = db.prepare(`
-    INSERT INTO items (name, description, room_id, photo_url, created_by)
-    VALUES (?, ?, ?, ?, ?)
-  `).run(name.trim(), description || null, room_id || null, photo_url, req.user.id);
+    INSERT INTO items (name, description, room_id, household_id, photo_url, created_by)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(name.trim(), description || null, room_id || null, household_id || null, photo_url, req.user.id);
 
   const item = db.prepare(`
-    SELECT i.*, r.name AS room_name, u.name AS created_by_name,
-           uu.name AS updated_by_name
+    SELECT i.*, r.name AS room_name, u.name AS created_by_name, uu.name AS updated_by_name
     FROM items i
     LEFT JOIN rooms r ON r.id = i.room_id
     JOIN users u ON u.id = i.created_by
@@ -141,7 +200,6 @@ router.put('/items/:id', upload.single('photo'), (req, res) => {
 
   let photo_url = item.photo_url;
   if (req.file) {
-    // Delete old photo if it's a local file
     if (item.photo_url && item.photo_url.startsWith('/uploads/')) {
       const oldPath = path.join(UPLOADS_DIR, path.basename(item.photo_url));
       if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
@@ -156,8 +214,7 @@ router.put('/items/:id', upload.single('photo'), (req, res) => {
   `).run(name.trim(), description || null, room_id || null, photo_url, req.user.id, req.params.id);
 
   const updated = db.prepare(`
-    SELECT i.*, r.name AS room_name, u.name AS created_by_name,
-           uu.name AS updated_by_name
+    SELECT i.*, r.name AS room_name, u.name AS created_by_name, uu.name AS updated_by_name
     FROM items i
     LEFT JOIN rooms r ON r.id = i.room_id
     JOIN users u ON u.id = i.created_by
