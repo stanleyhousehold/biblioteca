@@ -4,21 +4,42 @@ import { api } from '../api/api';
 import { useAuth } from '../context/AuthContext';
 import { useHousehold } from '../context/HouseholdContext';
 
+function timeAgo(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'ahora mismo';
+  if (mins < 60) return `hace ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `hace ${hours} h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `hace ${days} día${days !== 1 ? 's' : ''}`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `hace ${weeks} semana${weeks !== 1 ? 's' : ''}`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `hace ${months} mes${months !== 1 ? 'es' : ''}`;
+  const years = Math.floor(days / 365);
+  return `hace ${years} año${years !== 1 ? 's' : ''}`;
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
   const { currentHouseholdId, currentHousehold, personalEmoji } = useHousehold();
   const [stats, setStats] = useState(null);
+  const [recent, setRecent] = useState([]);
 
   useEffect(() => {
     const params = currentHouseholdId ? { household_id: currentHouseholdId } : {};
     setStats(null);
+    setRecent([]);
     Promise.all([
       api.inventory.getRooms(params),
       api.inventory.getItems(params),
       api.books.getLibraries(params),
       api.books.getBooks(params),
-    ]).then(([rooms, items, libraries, books]) => {
+      api.recent.get(params),
+    ]).then(([rooms, items, libraries, books, recentData]) => {
       setStats({ rooms: rooms.length, items: items.length, libraries: libraries.length, books: books.length });
+      setRecent(recentData);
     }).catch(() => {});
   }, [currentHouseholdId]);
 
@@ -81,6 +102,42 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {recent.length > 0 && (
+        <div className="card" style={{ marginTop: 24 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 800, marginBottom: 14, color: 'var(--gray-700)' }}>
+            Añadido recientemente
+          </h2>
+          <div className="recent-list">
+            {recent.map(item => (
+              <Link
+                key={`${item.type}-${item.id}`}
+                to={item.type === 'book' ? '/libros' : '/inventario'}
+                className="recent-item"
+              >
+                <div className="recent-thumb">
+                  {item.image
+                    ? <img src={item.image} alt={item.name} />
+                    : <span>{item.type === 'book' ? '📖' : '📦'}</span>
+                  }
+                </div>
+                <div className="recent-body">
+                  <div className="recent-name">{item.name}</div>
+                  <div className="recent-meta">
+                    <span className={`badge ${item.type === 'book' ? 'recent-badge-book' : 'recent-badge-item'}`}>
+                      {item.type === 'book' ? 'Libro' : 'Objeto'}
+                    </span>
+                    {item.group_name && (
+                      <span className="recent-group">{item.group_name}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="recent-time">{timeAgo(item.created_at)}</div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
       <style>{`
         .dashboard-grid {
           display: grid;
@@ -110,6 +167,30 @@ export default function Dashboard() {
         .dash-card-value { font-size: 32px; font-weight: 800; line-height: 1.1; margin: 2px 0; }
         .dash-card-sub { font-size: 13px; color: var(--gray-400); }
         .dash-card-arrow { font-size: 20px; color: var(--gray-300); }
+
+        .recent-list { display: flex; flex-direction: column; gap: 2px; }
+        .recent-item {
+          display: flex; align-items: center; gap: 12px; padding: 8px 6px;
+          border-radius: var(--radius-sm); text-decoration: none; color: inherit;
+          transition: background var(--transition);
+        }
+        .recent-item:hover { background: var(--gray-50); }
+        .recent-thumb {
+          width: 46px; height: 46px; border-radius: 6px; overflow: hidden; flex-shrink: 0;
+          background: var(--gray-100); display: flex; align-items: center; justify-content: center;
+          font-size: 22px;
+        }
+        .recent-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .recent-body { flex: 1; min-width: 0; }
+        .recent-name {
+          font-size: 13px; font-weight: 700; color: var(--gray-800);
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px;
+        }
+        .recent-meta { display: flex; align-items: center; gap: 5px; }
+        .recent-badge-book { background: var(--amber-50); color: var(--amber-700); font-size: 10px; padding: 1px 6px; }
+        .recent-badge-item { background: var(--teal-50); color: var(--teal-700); font-size: 10px; padding: 1px 6px; }
+        .recent-group { font-size: 11px; color: var(--gray-400); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .recent-time { font-size: 11px; color: var(--gray-400); flex-shrink: 0; white-space: nowrap; padding-left: 4px; }
       `}</style>
     </div>
   );

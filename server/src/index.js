@@ -14,6 +14,7 @@ const inventoryRoutes = require('./routes/inventory');
 const bookRoutes = require('./routes/books');
 const householdRoutes = require('./routes/households');
 const exportRoutes = require('./routes/export');
+const recentRoutes = require('./routes/recent');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -40,6 +41,7 @@ app.use('/api/inventory', inventoryRoutes);
 app.use('/api/books', bookRoutes);
 app.use('/api/households', householdRoutes);
 app.use('/api/export', exportRoutes);
+app.use('/api/recent', recentRoutes);
 
 // ── React frontend (production) ───────────────────────
 if (IS_PROD) {

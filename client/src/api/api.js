@@ -88,4 +88,11 @@ export const api = {
     },
     import: (body) => request('POST', '/export/import', body),
   },
+
+  recent: {
+    get: (params = {}) => {
+      const qs = new URLSearchParams(params).toString();
+      return request('GET', `/recent${qs ? '?' + qs : ''}`);
+    },
+  },
 };
