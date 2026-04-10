@@ -37,9 +37,9 @@ export default function Register() {
     <div className="auth-page">
       <div className="auth-box card">
         <div className="auth-logo">
-          <span className="auth-logo-icon">📚</span>
-          <h1>Biblioteca</h1>
-          <p>Crea tu cuenta familiar</p>
+          <span className="auth-logo-icon">🏡</span>
+          <h1>Stanley Log</h1>
+          <p>Tu hogar, tus libros, tus recetas</p>
         </div>
 
         {error && <div className="alert alert-error">{error}</div>}

@@ -287,7 +287,7 @@ export default function Books() {
   return (
     <div>
       <div className="page-header">
-        <h1>📚 Biblioteca</h1>
+        <h1>📚 Libros</h1>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="btn btn-secondary btn-sm" onClick={() => { setEditLibrary(null); setShowLibModal(true); }}><IconPlus /> Nueva colección</button>
           <button className="btn btn-primary btn-sm" onClick={() => { setEditBook(null); setShowBookModal(true); }}><IconPlus /> Añadir libro</button>

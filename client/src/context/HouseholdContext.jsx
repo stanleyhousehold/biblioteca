@@ -12,7 +12,7 @@ export function HouseholdProvider({ children }) {
     return saved ? Number(saved) : null;
   });
   const [personalEmoji, setPersonalEmojiState] = useState(
-    () => localStorage.getItem('personal_emoji') || '🏠'
+    () => localStorage.getItem('personal_emoji') || '🗂️'
   );
 
   function setPersonalEmoji(emoji) {

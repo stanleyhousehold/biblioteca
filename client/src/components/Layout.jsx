@@ -71,8 +71,8 @@ export default function Layout({ children }) {
   const SidebarContent = ({ onClose }) => (
     <>
       <div className="sidebar-brand">
-        <span className="sidebar-logo">📚</span>
-        <span className="sidebar-title">Biblioteca</span>
+        <span className="sidebar-logo">🏡</span>
+        <span className="sidebar-title">Stanley Log</span>
       </div>
 
       <HouseholdSwitcher />
@@ -113,7 +113,7 @@ export default function Layout({ children }) {
       {/* Mobile topbar */}
       <header className="topbar">
         <button className="btn btn-ghost btn-icon" onClick={() => setMenuOpen(o => !o)}><IconMenu /></button>
-        <span className="topbar-title">📚 Biblioteca</span>
+        <span className="topbar-title">🏡 Stanley Log</span>
         <button className="btn btn-ghost btn-sm btn-icon" onClick={handleLogout} title="Cerrar sesión"><IconLogout /></button>
       </header>
 

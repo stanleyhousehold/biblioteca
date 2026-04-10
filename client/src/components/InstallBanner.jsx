@@ -64,7 +64,7 @@ export default function InstallBanner() {
             <strong>Añadir a la pantalla de inicio</strong>
           </>
         ) : (
-          <>¡Instala Biblioteca en tu móvil para usarla sin conexión!</>
+          <>¡Instala Stanley Log en tu móvil para usarla sin conexión!</>
         )}
       </div>
       {prompt && (

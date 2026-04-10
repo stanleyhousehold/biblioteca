@@ -9,9 +9,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icons/icon.svg', 'icons/icon-maskable.svg'],
       manifest: {
-        name: 'Biblioteca Familiar',
-        short_name: 'Biblioteca',
-        description: 'Gestiona tu biblioteca y las colecciones de tu hogar',
+        name: 'Stanley Log',
+        short_name: 'Stanley Log',
+        description: 'Gestiona tu hogar, libros y recetas',
         theme_color: '#0f766e',
         background_color: '#ffffff',
         display: 'standalone',
