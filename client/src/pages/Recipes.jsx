@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { api } from '../api/api';
 import { useHousehold } from '../context/HouseholdContext';
 
@@ -90,6 +90,8 @@ function RecipeModal({ recipe, collections, householdId, onClose, onSave }) {
   const [photoPreview, setPhotoPreview] = useState(recipe?.photo_url || null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const ingRefs = useRef([]);
 
   const addIng = () => setIngredients(p => [...p, '']);
   const removeIng = i => setIngredients(p => p.filter((_, idx) => idx !== i));
@@ -212,8 +214,15 @@ function RecipeModal({ recipe, collections, householdId, onClose, onSave }) {
               {ingredients.map((ing, i) => (
                 <div key={i} style={{ display: 'flex', gap: 6 }}>
                   <input placeholder={`Ingrediente ${i + 1}`} value={ing}
+                    ref={el => { ingRefs.current[i] = el; }}
                     onChange={e => updateIng(i, e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addIng(); } }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        addIng();
+                        setTimeout(() => ingRefs.current[i + 1]?.focus(), 0);
+                      }
+                    }}
                     style={{ flex: 1 }} />
                   {ingredients.length > 1 && (
                     <button type="button" className="btn btn-ghost btn-icon" onClick={() => removeIng(i)}><IconX /></button>
