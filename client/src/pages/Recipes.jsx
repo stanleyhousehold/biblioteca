@@ -537,6 +537,17 @@ export default function Recipes() {
       )}
 
       <style>{`
+        .books-filters { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+        .books-filters .search-bar { flex:1; max-width:none; }
+        .lib-filter { padding:9px 12px; border:1.5px solid var(--gray-200); border-radius:var(--radius-sm); font-size:14px; background:white; color:var(--gray-700); cursor:pointer; }
+        .books-layout { display:grid; grid-template-columns:210px 1fr; gap:20px; align-items:start; }
+        .libs-panel { padding:16px; }
+        .libs-list { list-style:none; display:flex; flex-direction:column; gap:3px; }
+        .lib-chip { display:flex; align-items:center; gap:4px; padding:8px 8px; border-radius:var(--radius-sm); font-size:13px; cursor:pointer; color:var(--gray-700); transition:background var(--transition); }
+        .lib-chip:hover { background:var(--gray-50); }
+        .lib-chip.active { background:var(--green-50); color:var(--green-700); }
+        .book-meta-row { display:flex; gap:3px; flex-wrap:wrap; margin-bottom:4px; }
+        .book-actions { display:flex; gap:4px; margin-top:8px; }
         .recipes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
         .recipe-card { padding: 0; overflow: hidden; cursor: pointer; transition: box-shadow var(--transition), transform var(--transition); }
         .recipe-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
@@ -549,7 +560,7 @@ export default function Recipes() {
         .recipe-desc { font-size: 12px; color: var(--gray-500); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4; }
         .recipe-form-modal { max-width: 600px; max-height: 90vh; overflow: hidden; }
         .recipe-detail-modal { max-width: 620px; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column; }
-        @media(max-width: 700px) { .recipes-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); } }
+        @media(max-width: 700px) { .books-layout { grid-template-columns:1fr; } .libs-panel { display:none; } .recipes-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); } }
       `}</style>
     </div>
   );

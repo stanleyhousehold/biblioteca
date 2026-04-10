@@ -26,8 +26,6 @@ function UserAvatar({ user, size = 30 }) {
 function HouseholdSwitcher() {
   const { households, currentHouseholdId, switchHousehold, personalEmoji } = useHousehold();
 
-  if (households.length === 0) return null;
-
   return (
     <div className="household-switcher">
       <select
