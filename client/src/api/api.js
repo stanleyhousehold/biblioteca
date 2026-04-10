@@ -95,4 +95,22 @@ export const api = {
       return request('GET', `/recent${qs ? '?' + qs : ''}`);
     },
   },
+
+  recipes: {
+    getCollections: (params = {}) => {
+      const qs = new URLSearchParams(params).toString();
+      return request('GET', `/recipes/collections${qs ? '?' + qs : ''}`);
+    },
+    createCollection: (body) => request('POST', '/recipes/collections', body),
+    updateCollection: (id, body) => request('PUT', `/recipes/collections/${id}`, body),
+    deleteCollection: (id) => request('DELETE', `/recipes/collections/${id}`),
+
+    getRecipes: (params = {}) => {
+      const qs = new URLSearchParams(params).toString();
+      return request('GET', `/recipes${qs ? '?' + qs : ''}`);
+    },
+    createRecipe: (fd) => request('POST', '/recipes', fd, true),
+    updateRecipe: (id, fd) => request('PUT', `/recipes/${id}`, fd, true),
+    deleteRecipe: (id) => request('DELETE', `/recipes/${id}`),
+  },
 };

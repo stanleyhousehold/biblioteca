@@ -129,6 +129,37 @@ async function initDB() {
       )
     `);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS recipe_collections (
+        id           SERIAL PRIMARY KEY,
+        name         TEXT NOT NULL,
+        household_id INTEGER REFERENCES households(id) ON DELETE SET NULL,
+        created_by   INTEGER NOT NULL REFERENCES users(id),
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS recipes (
+        id            SERIAL PRIMARY KEY,
+        name          TEXT NOT NULL,
+        description   TEXT,
+        photo_url     TEXT,
+        ingredients   JSONB NOT NULL DEFAULT '[]',
+        steps         JSONB NOT NULL DEFAULT '[]',
+        prep_time     INTEGER,
+        cook_time     INTEGER,
+        servings      INTEGER,
+        difficulty    TEXT,
+        collection_id INTEGER REFERENCES recipe_collections(id) ON DELETE SET NULL,
+        household_id  INTEGER REFERENCES households(id) ON DELETE SET NULL,
+        created_by    INTEGER NOT NULL REFERENCES users(id),
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_by    INTEGER REFERENCES users(id),
+        updated_at    TIMESTAMPTZ
+      )
+    `);
+
     // Safe migrations using ADD COLUMN IF NOT EXISTS (PG 9.6+)
     const migrations = [
       `ALTER TABLE users ADD COLUMN IF NOT EXISTS photo_url TEXT`,

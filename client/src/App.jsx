@@ -8,6 +8,7 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
 import Books from './pages/Books';
+import Recipes from './pages/Recipes';
 import Profile from './pages/Profile';
 import Households, { JoinHousehold } from './pages/Households';
 import ForgotPassword from './pages/ForgotPassword';
@@ -46,6 +47,7 @@ export default function App() {
             <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
             <Route path="/inventario" element={<PrivateRoute><Inventory /></PrivateRoute>} />
             <Route path="/libros" element={<PrivateRoute><Books /></PrivateRoute>} />
+            <Route path="/recetas" element={<PrivateRoute><Recipes /></PrivateRoute>} />
             <Route path="/perfil" element={<PrivateRoute><Profile /></PrivateRoute>} />
             <Route path="/hogares" element={<PrivateRoute><Households /></PrivateRoute>} />
             <Route path="/unirse/:token" element={<PrivateRoute><JoinHousehold /></PrivateRoute>} />

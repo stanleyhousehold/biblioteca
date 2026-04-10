@@ -36,9 +36,15 @@ export default function Dashboard() {
       api.inventory.getItems(params),
       api.books.getLibraries(params),
       api.books.getBooks(params),
+      api.recipes.getCollections(params),
+      api.recipes.getRecipes(params),
       api.recent.get(params),
-    ]).then(([rooms, items, libraries, books, recentData]) => {
-      setStats({ rooms: rooms.length, items: items.length, libraries: libraries.length, books: books.length });
+    ]).then(([rooms, items, libraries, books, recipeCollections, recipes, recentData]) => {
+      setStats({
+        rooms: rooms.length, items: items.length,
+        libraries: libraries.length, books: books.length,
+        recipeCollections: recipeCollections.length, recipes: recipes.length,
+      });
       setRecent(recentData);
     }).catch(() => {});
   }, [currentHouseholdId]);
@@ -61,6 +67,15 @@ export default function Dashboard() {
       sublabel: `${stats?.books ?? '—'} libros`,
       color: 'var(--amber-600)',
       bg: 'var(--amber-50)',
+    },
+    {
+      to: '/recetas',
+      emoji: '🍳',
+      label: 'Recetas',
+      value: stats?.recipeCollections ?? '—',
+      sublabel: `${stats?.recipes ?? '—'} recetas`,
+      color: 'var(--green-700)',
+      bg: 'var(--green-50)',
     },
   ];
 
@@ -111,20 +126,20 @@ export default function Dashboard() {
             {recent.map(item => (
               <Link
                 key={`${item.type}-${item.id}`}
-                to={item.type === 'book' ? '/libros' : '/inventario'}
+                to={item.type === 'book' ? '/libros' : item.type === 'recipe' ? '/recetas' : '/inventario'}
                 className="recent-item"
               >
                 <div className="recent-thumb">
                   {item.image
                     ? <img src={item.image} alt={item.name} />
-                    : <span>{item.type === 'book' ? '📖' : '📦'}</span>
+                    : <span>{item.type === 'book' ? '📖' : item.type === 'recipe' ? '🍳' : '📦'}</span>
                   }
                 </div>
                 <div className="recent-body">
                   <div className="recent-name">{item.name}</div>
                   <div className="recent-meta">
-                    <span className={`badge ${item.type === 'book' ? 'recent-badge-book' : 'recent-badge-item'}`}>
-                      {item.type === 'book' ? 'Libro' : 'Objeto'}
+                    <span className={`badge ${item.type === 'book' ? 'recent-badge-book' : item.type === 'recipe' ? 'recent-badge-recipe' : 'recent-badge-item'}`}>
+                      {item.type === 'book' ? 'Libro' : item.type === 'recipe' ? 'Receta' : 'Objeto'}
                     </span>
                     {item.group_name && (
                       <span className="recent-group">{item.group_name}</span>
@@ -187,8 +202,9 @@ export default function Dashboard() {
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 3px;
         }
         .recent-meta { display: flex; align-items: center; gap: 5px; }
-        .recent-badge-book { background: var(--amber-50); color: var(--amber-700); font-size: 10px; padding: 1px 6px; }
-        .recent-badge-item { background: var(--teal-50); color: var(--teal-700); font-size: 10px; padding: 1px 6px; }
+        .recent-badge-book   { background: var(--amber-50); color: var(--amber-700);  font-size: 10px; padding: 1px 6px; }
+        .recent-badge-item   { background: var(--teal-50);  color: var(--teal-700);   font-size: 10px; padding: 1px 6px; }
+        .recent-badge-recipe { background: var(--green-50); color: var(--green-700);  font-size: 10px; padding: 1px 6px; }
         .recent-group { font-size: 11px; color: var(--gray-400); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .recent-time { font-size: 11px; color: var(--gray-400); flex-shrink: 0; white-space: nowrap; padding-left: 4px; }
       `}</style>

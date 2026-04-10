@@ -6,7 +6,7 @@ const router = express.Router();
 router.use(authMiddleware);
 
 // GET /api/recent?household_id=
-// Returns last 6 items + books combined, ordered by created_at DESC
+// Returns last 8 entries across items, books and recipes, newest first.
 router.get('/', async (req, res) => {
   try {
     const { household_id } = req.query;
@@ -20,11 +20,8 @@ router.get('/', async (req, res) => {
       if (!rows.length) return res.status(403).json({ error: 'No perteneces a este hogar' });
     }
 
-    const [cond, param] = household_id
-      ? ['= $1', household_id]
-      : ['IS NULL AND created_by = $1', userId];  // pseudo param — handled below
+    const p = household_id || userId;
 
-    // Build the UNION ALL query. Both subqueries use $1 for the same value.
     const sql = household_id
       ? `
         SELECT * FROM (
@@ -40,8 +37,15 @@ router.get('/', async (req, res) => {
             l.name AS group_name, b.created_at
           FROM books b LEFT JOIN libraries l ON l.id = b.library_id
           WHERE b.household_id = $1
+
+          UNION ALL
+
+          SELECT rc.id::text, 'recipe' AS type, rc.name,
+            rc.photo_url AS image, col.name AS group_name, rc.created_at
+          FROM recipes rc LEFT JOIN recipe_collections col ON col.id = rc.collection_id
+          WHERE rc.household_id = $1
         ) combined
-        ORDER BY created_at DESC LIMIT 6
+        ORDER BY created_at DESC LIMIT 8
       `
       : `
         SELECT * FROM (
@@ -57,11 +61,18 @@ router.get('/', async (req, res) => {
             l.name AS group_name, b.created_at
           FROM books b LEFT JOIN libraries l ON l.id = b.library_id
           WHERE b.household_id IS NULL AND b.created_by = $1
+
+          UNION ALL
+
+          SELECT rc.id::text, 'recipe' AS type, rc.name,
+            rc.photo_url AS image, col.name AS group_name, rc.created_at
+          FROM recipes rc LEFT JOIN recipe_collections col ON col.id = rc.collection_id
+          WHERE rc.household_id IS NULL AND rc.created_by = $1
         ) combined
-        ORDER BY created_at DESC LIMIT 6
+        ORDER BY created_at DESC LIMIT 8
       `;
 
-    const { rows } = await pool.query(sql, [household_id || userId]);
+    const { rows } = await pool.query(sql, [p]);
     res.json(rows);
   } catch (err) {
     console.error('[recent error]', err);
