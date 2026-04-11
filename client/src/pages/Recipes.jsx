@@ -361,6 +361,8 @@ export default function Recipes() {
   const [viewRecipe, setViewRecipe] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState(new Set());
 
   useEffect(() => {
     const t = setTimeout(() => setSearch(debouncedSearch), 350);
@@ -382,6 +384,9 @@ export default function Recipes() {
 
   useEffect(() => { loadData(); }, [loadData]);
   useEffect(() => { setFilterDifficulty(''); }, [currentHouseholdId, filterCollection]);
+  useEffect(() => { setSelectMode(false); setSelected(new Set()); }, [currentHouseholdId]);
+
+  function toggleSelect(id) { setSelected(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; }); }
 
   const availableDifficulties = [...new Set(recipes.map(r => r.difficulty).filter(Boolean))];
   const displayed = filterDifficulty ? recipes.filter(r => r.difficulty === filterDifficulty) : recipes;
@@ -394,14 +399,35 @@ export default function Recipes() {
       <div className="page-header">
         <h1>🍳 Recetas</h1>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn btn-secondary btn-sm" onClick={() => { setEditCollection(null); setShowColModal(true); }}>
-            <IconPlus /> Nueva colección
-          </button>
-          <button className="btn btn-primary btn-sm" onClick={() => { setEditRecipe(null); setShowRecipeModal(true); }}>
-            <IconPlus /> Añadir receta
-          </button>
+          {!selectMode && <>
+            <button className="btn btn-secondary btn-sm" onClick={() => { setEditCollection(null); setShowColModal(true); }}>
+              <IconPlus /> Nueva colección
+            </button>
+            <button className="btn btn-primary btn-sm" onClick={() => { setEditRecipe(null); setShowRecipeModal(true); }}>
+              <IconPlus /> Añadir receta
+            </button>
+          </>}
+          {!selectMode && recipes.length > 0 && (
+            <button className="btn btn-secondary btn-sm" onClick={() => setSelectMode(true)}>Seleccionar</button>
+          )}
+          {selectMode && (
+            <button className="btn btn-secondary btn-sm" onClick={() => { setSelectMode(false); setSelected(new Set()); }}>Cancelar</button>
+          )}
         </div>
       </div>
+
+      {selectMode && (
+        <div className="select-bar">
+          <span className="select-count">{selected.size} seleccionada{selected.size !== 1 ? 's' : ''}</span>
+          <button className="btn btn-secondary btn-sm" onClick={() => setSelected(new Set(displayed.map(r => r.id)))}>
+            Seleccionar todo ({displayed.length})
+          </button>
+          <button className="btn btn-danger btn-sm" disabled={selected.size === 0}
+            onClick={() => setConfirmDelete({ type: 'bulk', ids: [...selected], name: `${selected.size} receta${selected.size !== 1 ? 's' : ''}` })}>
+            Eliminar seleccionados ({selected.size})
+          </button>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="books-filters card" style={{ marginBottom: 20, padding: '14px 16px' }}>
@@ -475,7 +501,13 @@ export default function Recipes() {
               : (
                 <div className="recipes-grid">
                   {displayed.map(recipe => (
-                    <div key={recipe.id} className="recipe-card card" onClick={() => setViewRecipe(recipe)}>
+                    <div key={recipe.id} className={`recipe-card card${selected.has(recipe.id) ? ' card-selected' : ''}`}
+                      onClick={selectMode ? () => toggleSelect(recipe.id) : () => setViewRecipe(recipe)}
+                      style={{ cursor: 'pointer' }}>
+                      {selectMode && (
+                        <input type="checkbox" className="card-checkbox" checked={selected.has(recipe.id)}
+                          onChange={() => toggleSelect(recipe.id)} onClick={e => e.stopPropagation()} />
+                      )}
                       <div className="recipe-photo">
                         {recipe.photo_url
                           ? <img src={recipe.photo_url} alt={recipe.name} />
@@ -499,15 +531,17 @@ export default function Recipes() {
                           {recipe.servings && <span className="badge">👥 {recipe.servings}</span>}
                           {recipe.collection_name && <span className="badge">{recipe.collection_name}</span>}
                         </div>
-                        <div className="book-actions" onClick={e => e.stopPropagation()}>
-                          <button className="btn btn-ghost btn-sm" onClick={() => { setEditRecipe(recipe); setShowRecipeModal(true); }}>
-                            <IconEdit /> Editar
-                          </button>
-                          <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red-500)' }}
-                            onClick={() => setConfirmDelete({ type: 'recipe', id: recipe.id, name: recipe.name })}>
-                            <IconTrash /> Eliminar
-                          </button>
-                        </div>
+                        {!selectMode && (
+                          <div className="book-actions" onClick={e => e.stopPropagation()}>
+                            <button className="btn btn-ghost btn-sm" onClick={() => { setEditRecipe(recipe); setShowRecipeModal(true); }}>
+                              <IconEdit /> Editar
+                            </button>
+                            <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red-500)' }}
+                              onClick={() => setConfirmDelete({ type: 'recipe', id: recipe.id, name: recipe.name })}>
+                              <IconTrash /> Eliminar
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -540,12 +574,19 @@ export default function Recipes() {
           onClose={() => setConfirmDelete(null)}
           onConfirm={async () => {
             if (confirmDelete.type === 'col') await handleDeleteCol(confirmDelete.id);
-            else await handleDeleteRecipe(confirmDelete.id);
+            else if (confirmDelete.type === 'bulk') {
+              await Promise.all(confirmDelete.ids.map(id => api.recipes.deleteRecipe(id)));
+              setSelectMode(false); setSelected(new Set()); loadData();
+            } else await handleDeleteRecipe(confirmDelete.id);
             setConfirmDelete(null);
           }} />
       )}
 
       <style>{`
+        .select-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 14px; margin-bottom:12px; background:var(--green-50); border:1.5px solid var(--green-200); border-radius:var(--radius); }
+        .select-count { font-size:13px; font-weight:700; color:var(--green-700); flex:1; }
+        .card-checkbox { position:absolute; top:8px; left:8px; width:18px; height:18px; cursor:pointer; z-index:2; accent-color:var(--green-600); }
+        .card-selected { outline:2.5px solid var(--green-500); box-shadow:0 0 0 4px var(--green-50); }
         .books-filters { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
         .books-filters .search-bar { flex:1; max-width:none; }
         .lib-filter { padding:9px 12px; border:1.5px solid var(--gray-200); border-radius:var(--radius-sm); font-size:14px; background:white; color:var(--gray-700); cursor:pointer; }
@@ -558,7 +599,7 @@ export default function Recipes() {
         .book-meta-row { display:flex; gap:3px; flex-wrap:wrap; margin-bottom:4px; }
         .book-actions { display:flex; gap:4px; margin-top:8px; }
         .recipes-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 16px; }
-        .recipe-card { padding: 0; overflow: hidden; cursor: pointer; transition: box-shadow var(--transition), transform var(--transition); }
+        .recipe-card { padding: 0; overflow: hidden; cursor: pointer; position: relative; transition: box-shadow var(--transition), transform var(--transition); }
         .recipe-card:hover { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
         .recipe-photo { position: relative; background: var(--gray-100); }
         .recipe-photo img { width: 100%; height: 180px; object-fit: cover; display: block; }

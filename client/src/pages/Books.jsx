@@ -254,6 +254,8 @@ export default function Books() {
   const [editBook, setEditBook] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState(new Set());
 
   useEffect(() => { const t = setTimeout(() => setSearch(debouncedSearch), 350); return () => clearTimeout(t); }, [debouncedSearch]);
 
@@ -271,6 +273,9 @@ export default function Books() {
   }, [currentHouseholdId, search, filterLibrary]);
 
   useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { setSelectMode(false); setSelected(new Set()); }, [currentHouseholdId]);
+
+  function toggleSelect(id) { setSelected(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; }); }
 
   // Reset language filter when context changes so stale options don't linger
   useEffect(() => { setFilterLanguage(''); }, [currentHouseholdId, filterLibrary]);
@@ -289,10 +294,31 @@ export default function Books() {
       <div className="page-header">
         <h1>📚 Libros</h1>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn btn-secondary btn-sm" onClick={() => { setEditLibrary(null); setShowLibModal(true); }}><IconPlus /> Nueva colección</button>
-          <button className="btn btn-primary btn-sm" onClick={() => { setEditBook(null); setShowBookModal(true); }}><IconPlus /> Añadir libro</button>
+          {!selectMode && <>
+            <button className="btn btn-secondary btn-sm" onClick={() => { setEditLibrary(null); setShowLibModal(true); }}><IconPlus /> Nueva colección</button>
+            <button className="btn btn-primary btn-sm" onClick={() => { setEditBook(null); setShowBookModal(true); }}><IconPlus /> Añadir libro</button>
+          </>}
+          {!selectMode && displayedBooks.length > 0 && (
+            <button className="btn btn-secondary btn-sm" onClick={() => setSelectMode(true)}>Seleccionar</button>
+          )}
+          {selectMode && (
+            <button className="btn btn-secondary btn-sm" onClick={() => { setSelectMode(false); setSelected(new Set()); }}>Cancelar</button>
+          )}
         </div>
       </div>
+
+      {selectMode && (
+        <div className="select-bar">
+          <span className="select-count">{selected.size} seleccionado{selected.size !== 1 ? 's' : ''}</span>
+          <button className="btn btn-secondary btn-sm" onClick={() => setSelected(new Set(displayedBooks.map(b => b.id)))}>
+            Seleccionar todo ({displayedBooks.length})
+          </button>
+          <button className="btn btn-danger btn-sm" disabled={selected.size === 0}
+            onClick={() => setConfirmDelete({ type: 'bulk', ids: [...selected], name: `${selected.size} libro${selected.size !== 1 ? 's' : ''}` })}>
+            Eliminar seleccionados ({selected.size})
+          </button>
+        </div>
+      )}
 
       <div className="books-filters card" style={{ marginBottom: 20, padding: '14px 16px' }}>
         <div className="search-bar">
@@ -355,7 +381,13 @@ export default function Books() {
               : (
                 <div className="books-grid">
                   {displayedBooks.map(book => (
-                    <div key={book.id} className="book-card card">
+                    <div key={book.id} className={`book-card card${selected.has(book.id) ? ' card-selected' : ''}`}
+                      onClick={selectMode ? () => toggleSelect(book.id) : undefined}
+                      style={{ cursor: selectMode ? 'pointer' : undefined }}>
+                      {selectMode && (
+                        <input type="checkbox" className="card-checkbox" checked={selected.has(book.id)}
+                          onChange={() => toggleSelect(book.id)} onClick={e => e.stopPropagation()} />
+                      )}
                       <div className="book-cover-wrap">
                         {getCover(book)
                           ? <img src={getCover(book)} alt={book.title} className="book-cover" />
@@ -373,10 +405,12 @@ export default function Books() {
                         </div>
                         {book.isbn && <div className="book-isbn">ISBN: {book.isbn}</div>}
                         <div className="book-meta">Añadido por {book.created_by_name}</div>
-                        <div className="book-actions">
-                          <button className="btn btn-ghost btn-sm" onClick={() => { setEditBook(book); setShowBookModal(true); }}><IconEdit /> Editar</button>
-                          <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red-500)' }} onClick={() => setConfirmDelete({ type: 'book', id: book.id, name: book.title })}><IconTrash /> Eliminar</button>
-                        </div>
+                        {!selectMode && (
+                          <div className="book-actions">
+                            <button className="btn btn-ghost btn-sm" onClick={() => { setEditBook(book); setShowBookModal(true); }}><IconEdit /> Editar</button>
+                            <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red-500)' }} onClick={() => setConfirmDelete({ type: 'book', id: book.id, name: book.title })}><IconTrash /> Eliminar</button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -394,13 +428,20 @@ export default function Books() {
           onClose={() => setConfirmDelete(null)}
           onConfirm={async () => {
             if (confirmDelete.type === 'lib') await handleDeleteLib(confirmDelete.id);
-            else await handleDeleteBook(confirmDelete.id);
+            else if (confirmDelete.type === 'bulk') {
+              await Promise.all(confirmDelete.ids.map(id => api.books.deleteBook(id)));
+              setSelectMode(false); setSelected(new Set()); loadData();
+            } else await handleDeleteBook(confirmDelete.id);
             setConfirmDelete(null);
           }}
         />
       )}
 
       <style>{`
+        .select-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 14px; margin-bottom:12px; background:var(--amber-50); border:1.5px solid var(--amber-200); border-radius:var(--radius); }
+        .select-count { font-size:13px; font-weight:700; color:var(--amber-700); flex:1; }
+        .card-checkbox { position:absolute; top:8px; left:8px; width:18px; height:18px; cursor:pointer; z-index:2; accent-color:var(--amber-600); }
+        .card-selected { outline:2.5px solid var(--amber-400); box-shadow:0 0 0 4px var(--amber-50); }
         .books-filters { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
         .books-filters .search-bar { flex:1; max-width:none; }
         .lib-filter { padding:9px 12px; border:1.5px solid var(--gray-200); border-radius:var(--radius-sm); font-size:14px; background:white; color:var(--gray-700); cursor:pointer; }
@@ -411,7 +452,7 @@ export default function Books() {
         .lib-chip:hover { background:var(--gray-50); }
         .lib-chip.active { background:var(--amber-50); color:var(--amber-700); }
         .books-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:16px; }
-        .book-card { padding:0; overflow:hidden; }
+        .book-card { padding:0; overflow:hidden; position:relative; }
         .book-cover-wrap { position:relative; background:var(--gray-100); }
         .book-cover { width:100%; height:190px; object-fit:cover; display:block; }
         .book-cover-placeholder { height:130px; display:flex; align-items:center; justify-content:center; font-size:40px; background:linear-gradient(135deg,var(--amber-50) 0%,var(--yellow-100) 100%); }

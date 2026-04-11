@@ -149,6 +149,8 @@ export default function Inventory() {
   const [editItem, setEditItem] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState(new Set());
 
   useEffect(() => { const t = setTimeout(() => setSearch(debouncedSearch), 350); return () => clearTimeout(t); }, [debouncedSearch]);
 
@@ -165,6 +167,9 @@ export default function Inventory() {
   }, [householdParams, search, filterRoom]);
 
   useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { setSelectMode(false); setSelected(new Set()); }, [currentHouseholdId]);
+
+  function toggleSelect(id) { setSelected(p => { const n = new Set(p); n.has(id) ? n.delete(id) : n.add(id); return n; }); }
 
   async function handleDeleteRoom(id) { await api.inventory.deleteRoom(id); setFilterRoom(''); loadData(); }
   async function handleDeleteItem(id) { await api.inventory.deleteItem(id); loadData(); }
@@ -174,14 +179,35 @@ export default function Inventory() {
       <div className="page-header">
         <h1>📦 Inventario</h1>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn btn-secondary btn-sm" onClick={() => { setEditRoom(null); setShowRoomModal(true); }}>
-            <IconPlus /> Nueva habitación
-          </button>
-          <button className="btn btn-primary btn-sm" onClick={() => { setEditItem(null); setShowItemModal(true); }}>
-            <IconPlus /> Añadir objeto
-          </button>
+          {!selectMode && <>
+            <button className="btn btn-secondary btn-sm" onClick={() => { setEditRoom(null); setShowRoomModal(true); }}>
+              <IconPlus /> Nueva habitación
+            </button>
+            <button className="btn btn-primary btn-sm" onClick={() => { setEditItem(null); setShowItemModal(true); }}>
+              <IconPlus /> Añadir objeto
+            </button>
+          </>}
+          {!selectMode && items.length > 0 && (
+            <button className="btn btn-secondary btn-sm" onClick={() => setSelectMode(true)}>Seleccionar</button>
+          )}
+          {selectMode && (
+            <button className="btn btn-secondary btn-sm" onClick={() => { setSelectMode(false); setSelected(new Set()); }}>Cancelar</button>
+          )}
         </div>
       </div>
+
+      {selectMode && (
+        <div className="select-bar">
+          <span className="select-count">{selected.size} seleccionado{selected.size !== 1 ? 's' : ''}</span>
+          <button className="btn btn-secondary btn-sm" onClick={() => setSelected(new Set(items.map(i => i.id)))}>
+            Seleccionar todo ({items.length})
+          </button>
+          <button className="btn btn-danger btn-sm" disabled={selected.size === 0}
+            onClick={() => setConfirmDelete({ type: 'bulk', ids: [...selected], name: `${selected.size} objeto${selected.size !== 1 ? 's' : ''}` })}>
+            Eliminar seleccionados ({selected.size})
+          </button>
+        </div>
+      )}
 
       <div className="inv-filters card" style={{ marginBottom: 20, padding: '14px 16px' }}>
         <div className="search-bar">
@@ -235,7 +261,13 @@ export default function Inventory() {
               : (
                 <div className="items-grid">
                   {items.map(item => (
-                    <div key={item.id} className="item-card card">
+                    <div key={item.id} className={`item-card card${selected.has(item.id) ? ' card-selected' : ''}`}
+                      onClick={selectMode ? () => toggleSelect(item.id) : undefined}
+                      style={{ cursor: selectMode ? 'pointer' : undefined }}>
+                      {selectMode && (
+                        <input type="checkbox" className="card-checkbox" checked={selected.has(item.id)}
+                          onChange={() => toggleSelect(item.id)} onClick={e => e.stopPropagation()} />
+                      )}
                       {item.photo_url
                         ? <img src={item.photo_url} alt={item.name} className="item-photo" />
                         : <div className="item-photo-placeholder">📦</div>
@@ -245,10 +277,12 @@ export default function Inventory() {
                         {item.room_name && <span className="badge">{item.room_name}</span>}
                         {item.description && <p className="item-desc">{item.description}</p>}
                         <div className="item-meta">Añadido por {item.created_by_name}{item.updated_by_name ? ` · Editado por ${item.updated_by_name}` : ''}</div>
-                        <div className="item-actions">
-                          <button className="btn btn-ghost btn-sm" onClick={() => { setEditItem(item); setShowItemModal(true); }}><IconEdit /> Editar</button>
-                          <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red-500)' }} onClick={() => setConfirmDelete({ type: 'item', id: item.id, name: item.name })}><IconTrash /> Eliminar</button>
-                        </div>
+                        {!selectMode && (
+                          <div className="item-actions">
+                            <button className="btn btn-ghost btn-sm" onClick={() => { setEditItem(item); setShowItemModal(true); }}><IconEdit /> Editar</button>
+                            <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red-500)' }} onClick={() => setConfirmDelete({ type: 'item', id: item.id, name: item.name })}><IconTrash /> Eliminar</button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -266,13 +300,20 @@ export default function Inventory() {
           onClose={() => setConfirmDelete(null)}
           onConfirm={async () => {
             if (confirmDelete.type === 'room') await handleDeleteRoom(confirmDelete.id);
-            else await handleDeleteItem(confirmDelete.id);
+            else if (confirmDelete.type === 'bulk') {
+              await Promise.all(confirmDelete.ids.map(id => api.inventory.deleteItem(id)));
+              setSelectMode(false); setSelected(new Set()); loadData();
+            } else await handleDeleteItem(confirmDelete.id);
             setConfirmDelete(null);
           }}
         />
       )}
 
       <style>{`
+        .select-bar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:10px 14px; margin-bottom:12px; background:var(--teal-50); border:1.5px solid var(--teal-200); border-radius:var(--radius); }
+        .select-count { font-size:13px; font-weight:700; color:var(--teal-700); flex:1; }
+        .card-checkbox { position:absolute; top:8px; left:8px; width:18px; height:18px; cursor:pointer; z-index:2; accent-color:var(--teal-600); }
+        .card-selected { outline:2.5px solid var(--teal-500); box-shadow:0 0 0 4px var(--teal-100); }
         .inv-filters { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
         .inv-filters .search-bar { flex:1; max-width:none; }
         .room-filter { padding:9px 12px; border:1.5px solid var(--gray-200); border-radius:var(--radius-sm); font-size:14px; background:white; color:var(--gray-700); cursor:pointer; }
@@ -283,7 +324,7 @@ export default function Inventory() {
         .room-chip:hover { background:var(--gray-50); }
         .room-chip.active { background:var(--teal-50); color:var(--teal-700); }
         .items-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:16px; }
-        .item-card { padding:0; overflow:hidden; }
+        .item-card { padding:0; overflow:hidden; position:relative; }
         .item-photo { width:100%; height:140px; object-fit:cover; display:block; }
         .item-photo-placeholder { height:100px; display:flex; align-items:center; justify-content:center; font-size:36px; background:var(--gray-50); }
         .item-body { padding:12px; }
