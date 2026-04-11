@@ -113,6 +113,7 @@ export default function Dashboard() {
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <Link to="/inventario" className="btn btn-secondary">📦 Añadir objeto</Link>
           <Link to="/libros" className="btn btn-secondary">📖 Añadir libro</Link>
+          <Link to="/recetas" className="btn btn-secondary">🍳 Añadir receta</Link>
           <Link to="/inventario" className="btn btn-secondary">🔍 Buscar en inventario</Link>
         </div>
       </div>

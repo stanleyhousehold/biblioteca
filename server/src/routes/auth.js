@@ -20,8 +20,8 @@ if (process.env.RESEND_API_KEY) {
   }
 }
 
-const FROM_EMAIL = process.env.FROM_EMAIL || 'onboarding@resend.dev';
-const APP_URL = process.env.APP_URL || 'http://localhost:5173';
+const FROM_EMAIL = process.env.FROM_EMAIL || 'no-reply@stanleylog.app';
+const APP_URL = process.env.APP_URL || 'https://stanleylog.app';
 
 // ── Multer para fotos de perfil (memoria → Cloudinary) ─
 const uploadProfile = multer({
@@ -221,18 +221,27 @@ router.post('/forgot-password', async (req, res) => {
     const resetUrl = `${APP_URL}/reset-password?token=${token}`;
 
     if (resend) {
-      await resend.emails.send({
-        from: FROM_EMAIL,
-        to: user.email,
-        subject: 'Recuperar contraseña — Biblioteca Familiar',
-        html: `
-          <h2>Recuperar contraseña</h2>
-          <p>Hola ${user.name},</p>
-          <p>Has solicitado restablecer tu contraseña. Haz clic en el enlace de abajo (válido 1 hora):</p>
-          <p><a href="${resetUrl}" style="background:#0d9488;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold;">Restablecer contraseña</a></p>
-          <p>Si no has solicitado esto, ignora este email.</p>
-        `,
-      });
+      try {
+        const { data, error } = await resend.emails.send({
+          from: FROM_EMAIL,
+          to: user.email,
+          subject: 'Recuperar contraseña — Stanley Log',
+          html: `
+            <h2>Recuperar contraseña</h2>
+            <p>Hola ${user.name},</p>
+            <p>Has solicitado restablecer tu contraseña. Haz clic en el enlace de abajo (válido 1 hora):</p>
+            <p><a href="${resetUrl}" style="background:#0d9488;color:white;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:bold;">Restablecer contraseña</a></p>
+            <p>Si no has solicitado esto, ignora este email.</p>
+          `,
+        });
+        if (error) {
+          console.error('[ForgotPassword] Resend error:', error);
+        } else {
+          console.log(`[ForgotPassword] Email enviado a ${user.email}, id: ${data?.id}`);
+        }
+      } catch (sendErr) {
+        console.error('[ForgotPassword] Error al enviar email:', sendErr.message);
+      }
     } else {
       console.log(`[ForgotPassword] Enlace de recuperación para ${user.email}: ${resetUrl}`);
     }
