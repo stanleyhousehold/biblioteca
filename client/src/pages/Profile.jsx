@@ -83,10 +83,20 @@ export default function Profile() {
         items: data.items || [],
         libraries: data.libraries || [],
         books: data.books || [],
+        recipe_collections: data.recipe_collections || [],
+        recipes: data.recipes || [],
         household_id: currentHouseholdId || undefined,
       };
       const result = await api.export.import(payload);
-      setImportMsg(`Importación completada: ${result.stats.rooms} habitaciones, ${result.stats.items} objetos, ${result.stats.libraries} colecciones, ${result.stats.books} libros.`);
+      const s = result.stats;
+      const parts = [];
+      if (s.rooms)             parts.push(`${s.rooms} habitaciones`);
+      if (s.items)             parts.push(`${s.items} objetos`);
+      if (s.libraries)         parts.push(`${s.libraries} colecciones de libros`);
+      if (s.books)             parts.push(`${s.books} libros`);
+      if (s.recipe_collections) parts.push(`${s.recipe_collections} colecciones de recetas`);
+      if (s.recipes)           parts.push(`${s.recipes} recetas`);
+      setImportMsg(`Importación completada: ${parts.join(', ') || 'nada importado'}.`);
     } catch (err) {
       setImportError(err.message || 'Formato de archivo no válido');
     } finally { setImporting(false); e.target.value = ''; }
