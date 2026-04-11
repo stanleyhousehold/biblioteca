@@ -194,11 +194,12 @@ router.post('/forgot-password', async (req, res) => {
   try {
     const { username } = req.body;
     if (!username) {
-      return res.status(400).json({ error: 'El nombre de usuario es obligatorio' });
+      return res.status(400).json({ error: 'El nombre de usuario o email es obligatorio' });
     }
 
     const { rows } = await pool.query(
-      'SELECT id, name, email FROM users WHERE username = $1', [username]
+      'SELECT id, name, email FROM users WHERE username = $1 OR email = $1',
+      [username.trim()]
     );
     const user = rows[0];
     // Always return OK to not reveal if user exists

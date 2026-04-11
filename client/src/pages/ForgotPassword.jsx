@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from '../api/api';
 
 export default function ForgotPassword() {
-  const [username, setUsername] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -13,7 +13,7 @@ export default function ForgotPassword() {
     setError('');
     setLoading(true);
     try {
-      await api.auth.forgotPassword({ username });
+      await api.auth.forgotPassword({ username: identifier });
       setSent(true);
     } catch (err) {
       setError(err.message);
@@ -28,7 +28,7 @@ export default function ForgotPassword() {
         <div className="auth-logo">
           <span className="auth-logo-icon">🔑</span>
           <h1>Recuperar contraseña</h1>
-          <p>Introduce tu nombre de usuario</p>
+          <p>Introduce tu usuario o email</p>
         </div>
 
         {sent ? (
@@ -48,12 +48,12 @@ export default function ForgotPassword() {
             {error && <div className="alert alert-error">{error}</div>}
             <form onSubmit={handleSubmit}>
               <div className="field">
-                <label>Nombre de usuario</label>
+                <label>Usuario o email</label>
                 <input
                   autoFocus
-                  placeholder="Tu nombre de usuario"
-                  value={username}
-                  onChange={e => setUsername(e.target.value)}
+                  placeholder="Tu nombre de usuario o email"
+                  value={identifier}
+                  onChange={e => setIdentifier(e.target.value)}
                   required
                 />
               </div>
